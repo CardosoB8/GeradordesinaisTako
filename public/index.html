@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Gerador — Apenas números com WhatsApp (simulado)</title>
+
+<style>
+  :root {
+    --bg: #0b1220;
+    --card: #0f1724;
+    --accent: #2dd4bf;
+    --muted: #9aa6b2;
+  }
+
+  body {
+    font-family: Inter, system-ui, Arial;
+    background: var(--bg);
+    color: #e6eef8;
+    margin: 0;
+    padding: 18px;
+  }
+
+  .wrap {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+
+  .card {
+    background: var(--card);
+    padding: 16px;
+    border-radius: 10px;
+    min-width: 320px;
+    flex: 1;
+  }
+
+  h1 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+  }
+
+  label {
+    display: block;
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 8px;
+  }
+
+  input,
+  select,
+  textarea {
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: 0;
+    background: #061226;
+    color: #fff;
+    margin-top: 6px;
+  }
+
+  button {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 0;
+    background: var(--accent);
+    color: #022;
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .btn-ghost {
+    background: #ffffff10;
+    color: #fff;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+  }
+
+  th, td {
+    padding: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    font-size: 13px;
+  }
+
+  .small {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .wh-icon {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .wh-yes {
+    color: #2dd4bf;
+    font-weight: 700;
+  }
+
+  .wh-no {
+    color: #9aa6b2;
+  }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .small-input {
+    width: 100px;
+    padding: 6px;
+    border-radius: 6px;
+    border: 0;
+    background: #061226;
+    color: #fff;
+  }
+
+  .muted-block {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 8px;
+  }
+
+  .notice {
+    background: #ffffff10;
+    padding: 8px;
+    border-radius: 8px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+
+<body>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h1>Gerador Simulado — Apenas números com WhatsApp</h1>
+    <div class="small">Uso educativo — não verifica números reais</div>
+  </div>
+
+  <div class="wrap">
+    <!-- Painel de Configuração -->
+    <div class="card" style="max-width:560px">
+      <div class="small">Configurações</div>
+
+      <label>Quantidade a gerar</label>
+      <input id="count" type="number" value="50" min="1" max="5000"/>
+
+      <label>Formato de saída</label>
+      <select id="format">
+        <option value="+258">+258 82 1234567</option>
+        <option value="local">82 1234567 (local)</option>
+        <option value="e164">+258821234567 (E.164)</option>
+      </select>
+
+      <label>Peso por prefixo</label>
+      <div class="small">Prefixos móveis comuns em Moçambique: 82,83 (Mcel), 84,85 (Vodacom), 86,87 (Movitel).</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px">
+        <div><label>82</label><input id="w82" type="number" value="30" min="0"/></div>
+        <div><label>83</label><input id="w83" type="number" value="10" min="0"/></div>
+        <div><label>84</label><input id="w84" type="number" value="25" min="0"/></div>
+        <div><label>85</label><input id="w85" type="number" value="10" min="0"/></div>
+        <div><label>86</label><input id="w86" type="number" value="15" min="0"/></div>
+        <div><label>87</label><input id="w87" type="number" value="10" min="0"/></div>
+      </div>
+
+      <label>Incluir também códigos fixos/regionais?</label>
+      <select id="includeFixed">
+        <option value="no">Não</option>
+        <option value="yes">Sim (21,23,24...)</option>
+      </select>
+
+      <label>Probabilidade simulada base (0–100)</label>
+      <input id="probBase" type="number" value="40" min="0" max="100"/>
+
+      <div class="controls" style="margin-top:6px">
+        <label style="margin:0">Probabilidade base de ter WhatsApp (%):</label>
+        <input id="whSimProb" class="small-input" type="number" min="0" max="100" value="50" />
+        <label style="margin:0">Só devolver números com WhatsApp:</label>
+        <input id="onlyWhatsApp" type="checkbox" />
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <button id="genBtn">Gerar Números (simulado)</button>
+        <button id="exportBtn">Exportar CSV</button>
+        <button id="exportTxtBtn">Exportar TXT</button>
+        <button id="exportXmlBtn">Exportar XML</button>
+        <button id="clearBtn" class="btn-ghost">Limpar</button>
+      </div>
+
+      <div class="muted-block">
+        Nota: A opção “Só com WhatsApp” é uma simulação local. <strong>Não</strong> verifica contas reais.
+      </div>
+
+      <div id="status" class="notice" style="display:none"></div>
+    </div>
+
+    <!-- Painel de Resultados -->
+    <div class="card" style="max-width:760px;flex:1.2">
+      <div class="small">Resultados (simulados)</div>
+      <table id="tbl">
+        <thead>
+          <tr><th>#</th><th>Número</th><th>Prefixo</th><th>Probabilidade(%)</th><th>WhatsApp?</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div style="margin-top:10px" class="small">
+        Exporta em CSV, TXT ou XML. O campo <code>whatsapp</code> é simulado.
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const mobilePrefixes = ['82','83','84','85','86','87'];
+  const fixedPrefixes = ['21','23','24','26','27','28','29'];
+  const elements = {
+    count: document.getElementById('count'),
+    format: document.getElementById('format'),
+    includeFixed: document.getElementById('includeFixed'),
+    genBtn: document.getElementById('genBtn'),
+    exportBtn: document.getElementById('exportBtn'),
+    exportTxtBtn: document.getElementById('exportTxtBtn'),
+    exportXmlBtn: document.getElementById('exportXmlBtn'),
+    clearBtn: document.getElementById('clearBtn'),
+    tblBody: document.querySelector('#tbl tbody'),
+    probBase: document.getElementById('probBase'),
+    w82: document.getElementById('w82'),
+    w83: document.getElementById('w83'),
+    w84: document.getElementById('w84'),
+    w85: document.getElementById('w85'),
+    w86: document.getElementById('w86'),
+    w87: document.getElementById('w87'),
+    whSimProb: document.getElementById('whSimProb'),
+    onlyWhatsApp: document.getElementById('onlyWhatsApp'),
+    status: document.getElementById('status')
+  };
+
+  let lastGenerated = [];
+
+  function readWeights(){
+    return {
+      w82: +elements.w82.value,
+      w83: +elements.w83.value,
+      w84: +elements.w84.value,
+      w85: +elements.w85.value,
+      w86: +elements.w86.value,
+      w87: +elements.w87.value
+    };
+  }
+
+  function pickPrefix(weights, includeFixed){
+    const pool = [];
+    mobilePrefixes.forEach(p=>{ for(let i=0;i<(weights['w'+p]||0);i++) pool.push(p); });
+    if(includeFixed) fixedPrefixes.forEach(p=>{ for(let i=0;i<5;i++) pool.push(p); });
+    if(pool.length===0) return mobilePrefixes[Math.floor(Math.random()*mobilePrefixes.length)];
+    return pool[Math.floor(Math.random()*pool.length)];
+  }
+
+  function genSubscriberNumber(){ return Array.from({length:7},()=>Math.floor(Math.random()*10)).join(''); }
+
+  function formatNumber(prefix, subscriber, fmt){
+    if(fmt==='local') return `${prefix} ${subscriber}`;
+    if(fmt==='+258') return `+258 ${prefix} ${subscriber}`;
+    if(fmt==='e164') return `+258${prefix}${subscriber}`;
+    return `+258 ${prefix} ${subscriber}`;
+  }
+
+  function randomProb(base){
+    const sigma=18, u=(Math.random()+Math.random()+Math.random())/3;
+    let p=base+(u-0.5)*sigma;
+    return Math.max(0,Math.min(100,Math.round(p*10)/10));
+  }
+
+  function escapeXml(str){
+    return str.replace(/[<>&'"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
+  }
+
+  function renderTable(){
+    elements.tblBody.innerHTML='';
+    lastGenerated.forEach((r,i)=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`
+        <td>${i+1}</td>
+        <td>${r.num}</td>
+        <td>${r.prefix}</td>
+        <td>${r.prob}%</td>
+        <td><span class="wh-icon ${r.whatsapp?'wh-yes':'wh-no'}" title="Clique para alternar">${r.whatsapp?'✔ Sim':'— Não'}</span></td>
+      `;
+      tr.querySelector('.wh-icon').addEventListener('click',()=>{ r.whatsapp=!r.whatsapp; renderTable(); });
+      elements.tblBody.appendChild(tr);
+    });
+  }
+
+  function generateNumbers(){
+    const desired = Math.min(5000,Math.max(1,+elements.count.value));
+    const fmt = elements.format.value;
+    const includeFixed = elements.includeFixed.value==='yes';
+    const weights = readWeights();
+    const base = Math.max(0,Math.min(100,+elements.probBase.value));
+    const whSimBase = Math.max(0,Math.min(100,+elements.whSimProb.value))/100;
+    const onlyWhats = elements.onlyWhatsApp.checked;
+    lastGenerated=[]; const seen=new Set();
+
+    while(lastGenerated.length<desired){
+      const prefix=pickPrefix(weights,includeFixed);
+      const subscriber=genSubscriberNumber();
+      const key=prefix+subscriber;
+      if(seen.has(key)) continue;
+      seen.add(key);
+      const prob=randomProb(base);
+      const formatted=formatNumber(prefix,subscriber,fmt);
+      let whatsapp=false;
+      const chance=whSimBase*(0.4+0.6*(prob/100));
+      whatsapp=Math.random()<chance;
+      if(!onlyWhats || whatsapp) lastGenerated.push({num:formatted,prefix,subscriber,prob,whatsapp});
+    }
+
+    renderTable();
+    elements.status.style.display='none';
+  }
+
+  function downloadCSV(){
+    if(!lastGenerated.length){ alert('Nenhum número gerado'); return; }
+    let csv='number,prefix,subscriber,probability,whatsapp\n';
+    lastGenerated.forEach(r=>csv+=`${r.num},${r.prefix},${r.subscriber},${r.prob},${r.whatsapp}\n`);
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='numeros_mz_simulados.csv';
+    a.click();
+  }
+
+  function downloadTXT(){
+    if(!lastGenerated.length){ alert('Nenhum número gerado'); return; }
+    const txt=lastGenerated.map(r=>`${r.num}  [WhatsApp:${r.whatsapp?'SIM':'NAO'}]`).join('\n');
+    const blob=new Blob([txt],{type:'text/plain;charset=utf-8;'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='numeros_mz_simulados.txt';
+    a.click();
+  }
+
+  function downloadXML(){
+    if(!lastGenerated.length){ alert('Nenhum número gerado'); return; }
+    let xml='<?xml version="1.0" encoding="UTF-8"?>\n<numeros>\n';
+    lastGenerated.forEach(r=>{
+      xml+=`  <numero>\n    <value>${escapeXml(r.num)}</value>\n    <prefix>${r.prefix}</prefix>\n    <subscriber>${r.subscriber}</subscriber>\n    <probability>${r.prob}</probability>\n    <whatsapp>${r.whatsapp}</whatsapp>\n  </numero>\n`;
+    });
+    xml+='</numeros>';
+    const blob=new Blob([xml],{type:'application/xml;charset=utf-8;'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='numeros_mz_simulados.xml';
+    a.click();
+  }
+
+  elements.genBtn.addEventListener('click',generateNumbers);
+  elements.exportBtn.addEventListener('click',downloadCSV);
+  elements.exportTxtBtn.addEventListener('click',downloadTXT);
+  elements.exportXmlBtn.addEventListener('click',downloadXML);
+  elements.clearBtn.addEventListener('click',()=>{
+    lastGenerated=[];
+    elements.tblBody.innerHTML='';
+    elements.status.style.display='none';
+  });
+})();
+</script>
+</body>
+</html>
