@@ -1,8 +1,8 @@
 {
   "name": "sistema-licenca-node-redis",
   "version": "1.0.0",
-  "description": "Servidor de licenciamento com Express e persistência via ioredis (Redis Cloud).",
-  "main": "index.js.js",
+  "description": "Servidor de licenciamento com Express e persistência via redis.",
+  "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -10,7 +10,6 @@
   "keywords": [
     "express",
     "redis",
-    "ioredis",
     "licensing",
     "vercel"
   ],
@@ -18,6 +17,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
-    "ioredis": "^5.3.2"
+    "redis": "^4.6.10" 
+    // ^^^ CERTIFIQUE-SE QUE ESTÁ AQUI ^^^
   }
 }
