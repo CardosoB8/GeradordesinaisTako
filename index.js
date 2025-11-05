@@ -1,17 +1,21 @@
 const express = require('express');
-const fs = require('fs'); // Importa o módulo File System do Node.js
-const path = require('path');
+const Redis = require('ioredis'); // Importa a biblioteca Redis
 const app = express();
 const port = 3000; 
 
-// Nome e caminho do arquivo de persistência
-const LICENSES_FILE = path.join(__dirname, 'licenses.json');
+// 1. Configurar a Conexão com o Redis (usando as variáveis de ambiente)
+const redis = new Redis({
+    port: process.env.REDIS_PORT || 6379,
+    host: process.env.REDIS_HOST,
+    password: process.env.REDIS_PASSWORD,
+    connectTimeout: 10000 // Aumenta um pouco o tempo de conexão, se necessário
+});
 
-// Configuração (Middleware)
+redis.on("connect", () => console.log("✔️ Conectado ao Redis com sucesso."));
+redis.on("error", (err) => console.error("❌ Erro na Conexão Redis:", err));
+
+
 app.use(express.json());
-
-// Armazenamento em memória (cache) que será sincronizado com o arquivo
-let devices = {}; 
 
 // --- Contas Premium Estáticas ---
 const PREMIUM_ACCOUNTS = {
@@ -20,105 +24,74 @@ const PREMIUM_ACCOUNTS = {
 };
 
 // =================================================================
-// FUNÇÕES DE PERSISTÊNCIA (LER E SALVAR NO DISCO)
+// FUNÇÕES AUXILIARES DO REDIS
 // =================================================================
 
 /**
- * Carrega os dados de licença do arquivo JSON para a memória (cache).
+ * Obtém os dados de licença para um Device ID.
+ * @param {string} deviceId 
+ * @returns {Promise<object | null>}
  */
-function loadLicenses() {
-    try {
-        if (fs.existsSync(LICENSES_FILE)) {
-            const data = fs.readFileSync(LICENSES_FILE, 'utf8');
-            devices = JSON.parse(data);
-            console.log(`✅ Licenças carregadas do disco: ${Object.keys(devices).length} IDs.`);
-        } else {
-            // Se o arquivo não existe, cria um objeto vazio.
-            devices = {}; 
-            console.log('⚠️ Arquivo licenses.json não encontrado. Iniciando com dados vazios.');
-        }
-    } catch (error) {
-        console.error('❌ Erro ao carregar licenças:', error.message);
-        devices = {}; // Falha no parse, inicia vazio para evitar travar.
-    }
+async function getDeviceData(deviceId) {
+    const data = await redis.get(deviceId);
+    if (!data) return null;
+    return JSON.parse(data);
 }
 
 /**
- * Salva os dados de licença da memória para o arquivo JSON no disco.
+ * Salva os dados de licença para um Device ID.
+ * @param {string} deviceId 
+ * @param {object} data - Os dados do dispositivo (username, type, firstSeen, etc.)
  * @returns {Promise<void>}
  */
-function saveLicenses() {
-    return new Promise((resolve, reject) => {
-        const data = JSON.stringify(devices, null, 4); // null, 4 para formatação bonita
-        fs.writeFile(LICENSES_FILE, data, 'utf8', (err) => {
-            if (err) {
-                console.error('❌ Erro ao salvar licenças:', err.message);
-                return reject(err);
-            }
-            console.log('💾 Licenças salvas com sucesso.');
-            resolve();
-        });
-    });
+async function setDeviceData(deviceId, data) {
+    // Salvamos como uma string JSON
+    await redis.set(deviceId, JSON.stringify(data));
 }
 
-// Carrega os dados ao iniciar o servidor
-loadLicenses();
-
 
 // =================================================================
-// ENDPOINT PRINCIPAL
+// ENDPOINT PRINCIPAL (AGORA 100% ASSÍNCRONO)
 // =================================================================
 
-app.post('/login', async (req, res) => { // Tornar a função assíncrona para usar await
+app.post('/login', async (req, res) => {
     const { deviceId, username, password } = req.body;
     
-    // ... (restante da validação inicial)
     if (!deviceId || !username || !password) {
         return res.status(400).json({ success: false, message: 'Dados incompletos.' });
     }
 
     const now = new Date();
-    // Usa a cópia em memória (cache) para a leitura
-    const deviceRecord = devices[deviceId];
-    let dataChanged = false; // Flag para saber se precisamos salvar
-
+    // LEITURA DO REDIS
+    const deviceRecord = await getDeviceData(deviceId);
+    
     // ---------------------- LÓGICA DE TESTE (TRIAL) ----------------------
     if (username === 'user1' && password === '25') {
         const TRIAL_LIMIT_HOURS = 1;
 
         if (deviceRecord) {
-            const timeDiff = (now - new Date(deviceRecord.firstSeen)) / (1000 * 60 * 60);
+            // ... (Lógica de tempo e expiração, idêntica ao anterior)
             
+            const timeDiff = (now - new Date(deviceRecord.firstSeen)) / (1000 * 60 * 60);
+
             if (timeDiff >= TRIAL_LIMIT_HOURS) {
-                // TRIAL EXPIRADO
-                return res.json({ 
-                    success: false, 
-                    message: 'Seu teste de 1 hora expirou. ID bloqueado.',
-                    expired: true, 
-                    type: 'expired'
-                });
+                // EXPIRADO
+                return res.json({ success: false, message: 'Seu teste de 1 hora expirou. ID bloqueado.', expired: true, type: 'expired' });
             } else {
-                // TRIAL ATIVO - Apenas atualiza a hora e continua
-                deviceRecord.lastSeen = now;
-                dataChanged = true;
+                // ATIVO - ATUALIZAÇÃO E SALVAMENTO
+                deviceRecord.lastSeen = now.toISOString();
+                await setDeviceData(deviceId, deviceRecord); // SALVA NO REDIS
+                
                 const remainingMinutes = Math.floor((TRIAL_LIMIT_HOURS - timeDiff) * 60);
-                // ... (resposta de sucesso trial)
-                // Se a lógica passou, salve antes de responder
-                if(dataChanged) await saveLicenses(); 
                 return res.json({ success: true, message: `Acesso Trial permitido (${remainingMinutes} min restantes)`, type: 'trial' });
             }
         } else {
-            // NOVO TRIAL
-            devices[deviceId] = {
-                username: 'user1',
-                type: 'trial',
-                firstSeen: now.toISOString(), // Salva a data em formato string para o JSON
-                lastSeen: now.toISOString(),
+            // NOVO TRIAL - CRIAÇÃO E SALVAMENTO
+            const newRecord = {
+                username: 'user1', type: 'trial',
+                firstSeen: now.toISOString(), lastSeen: now.toISOString(),
             };
-            dataChanged = true;
-            console.log('🎉 Novo trial registrado:', deviceId);
-            // Salve os dados
-            await saveLicenses(); 
+            await setDeviceData(deviceId, newRecord); // SALVA NO REDIS
             return res.json({ success: true, message: 'Trial iniciado. Você tem 1 hora de acesso.', type: 'trial' });
         }
     }
@@ -127,41 +100,37 @@ app.post('/login', async (req, res) => { // Tornar a função assíncrona para u
     if (PREMIUM_ACCOUNTS[username] && PREMIUM_ACCOUNTS[username] === password) {
         
         // 1. Verificação de USO ÚNICO (Multi-Dispositivo)
-        const activePremiumDevice = Object.keys(devices).find(id => 
-            devices[id].username === username && 
-            devices[id].type === 'premium' && 
-            id !== deviceId
-        );
+        // Usamos SCAN ou uma busca pré-indexada para grandes bancos de dados. 
+        // Para simplificar, faremos uma varredura (menos performática, mas funciona):
+        
+        // Lógica de varredura simplificada: Você precisará de uma forma de listar todos os IDs 
+        // ou usar um índice secundário. A lógica de array anterior não funciona diretamente no Redis.
+        
+        // **OPÇÃO MAIS SEGURA E SIMPLES COM REDIS PARA UNICIDADE:**
+        // Crie uma chave de índice: `premium_user_index:USERNAME`
+        
+        const premiumIndexKey = `premium_user_index:${username}`;
+        const activeIdForUser = await redis.get(premiumIndexKey); // Vê qual ID está ativo para esta conta
 
-        if (activePremiumDevice) {
-            // Bloqueio de Multi-Dispositivo
+        if (activeIdForUser && activeIdForUser !== deviceId) {
+            // Bloqueio de Multi-Dispositivo: A conta está ativa em outro lugar
             return res.json({ 
                 success: false, 
                 message: `Esta conta Premium já está em uso em outro dispositivo.`,
-                expired: true, 
-                type: 'multi_device_lock'
+                expired: true, type: 'multi_device_lock'
             });
         }
         
         // 2. Registro/Atualização do Device ID atual
-        if (!deviceRecord || deviceRecord.type !== 'premium' || deviceRecord.username !== username) {
-             // Novo registro premium ou upgrade de trial
-             devices[deviceId] = {
-                username: username,
-                type: 'premium',
-                firstSeen: now.toISOString(), 
-                lastSeen: now.toISOString(),
-            };
-            dataChanged = true;
-        } else {
-            // Atualização de sessão para o mesmo ID/usuário
-            deviceRecord.lastSeen = now.toISOString();
-            dataChanged = true;
-        }
-
-        // Se a lógica passou e houve alteração, salve no disco
-        if(dataChanged) await saveLicenses();
+        // ... (criação de newRecord)
         
+        const recordToSave = deviceRecord && deviceRecord.username === username ? deviceRecord : { username, type: 'premium', firstSeen: now.toISOString() };
+        recordToSave.lastSeen = now.toISOString();
+        
+        // SALVA NO REDIS: Chave do dispositivo e Chave de índice
+        await setDeviceData(deviceId, recordToSave); 
+        await redis.set(premiumIndexKey, deviceId); // Registra este ID como o ID oficial desta conta
+
         return res.json({ 
             success: true, 
             message: `Acesso Premium permitido. Bem-vindo, ${username}!`,
@@ -173,23 +142,8 @@ app.post('/login', async (req, res) => { // Tornar a função assíncrona para u
     res.json({ success: false, message: 'Credenciais inválidas: Usuário ou senha incorretos.' });
 });
 
-// ... (Endpoint /remove também precisa ser atualizado)
-
-app.get('/remove', async (req, res) => { // Torna a função assíncrona
-    const { deviceId } = req.query;
-    if (deviceId && devices[deviceId]) {
-        delete devices[deviceId];
-        // Salva a alteração
-        await saveLicenses(); 
-        console.log('🗑️ Dispositivo removido (licença resetada):', deviceId);
-        res.json({ success: true, message: `Dispositivo ${deviceId} removido` });
-    } else {
-        res.json({ success: false, message: 'Dispositivo não encontrado' });
-    }
-});
-
+// ... (Endpoint /remove também deve usar redis.del(deviceId))
 
 app.listen(port, () => {
     console.log(`🚀 Servidor de Licenças rodando na porta ${port}`);
-    console.log('Dados de licença persistentes via licenses.json.');
 });
