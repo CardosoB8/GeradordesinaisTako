@@ -1,9 +1,9 @@
-// server.js - Versão simplificada e funcional
 const express = require('express');
 const app = express();
 
 app.use(express.json());
 
+// Dados em memória (em produção use um banco)
 let authorizedDevices = [];
 let premiumAccounts = [];
 
@@ -13,6 +13,14 @@ app.post('/login', (req, res) => {
     
     console.log('Login attempt:', { username, deviceId });
     
+    // SEMPRE retornar JSON válido
+    if (!username || !password || !deviceId) {
+        return res.json({ 
+            success: false, 
+            message: 'Dados incompletos' 
+        });
+    }
+
     // Conta de teste
     if (username === "user1" && password === "25") {
         const existingDevice = authorizedDevices.find(d => 
@@ -27,6 +35,11 @@ app.post('/login', (req, res) => {
                     message: "Acesso limitado - Trial de 1 hora expirado" 
                 });
             }
+            
+            return res.json({ 
+                success: true, 
+                message: "Login trial realizado com sucesso" 
+            });
         } else {
             // Primeiro login - registrar
             authorizedDevices.push({
@@ -35,12 +48,12 @@ app.post('/login', (req, res) => {
                 authorizedAt: new Date().toISOString(),
                 accountType: "trial"
             });
+            
+            return res.json({ 
+                success: true, 
+                message: "Login trial realizado - Você tem 1 hora de acesso" 
+            });
         }
-        
-        return res.json({ 
-            success: true, 
-            message: "Login realizado com sucesso" 
-        });
     }
     
     // Verificar contas premium
@@ -51,10 +64,11 @@ app.post('/login', (req, res) => {
     if (premiumAccount) {
         return res.json({ 
             success: true, 
-            message: "Login premium realizado" 
+            message: "Login premium realizado com sucesso" 
         });
     }
     
+    // Credenciais inválidas
     res.json({ 
         success: false, 
         message: "Credenciais inválidas" 
@@ -69,11 +83,24 @@ app.post('/add-premium', (req, res) => {
         return res.json({ success: false, message: "Não autorizado" });
     }
     
-    premiumAccounts.push({ username, deviceId, addedAt: new Date().toISOString() });
+    premiumAccounts.push({ 
+        username, 
+        deviceId, 
+        addedAt: new Date().toISOString() 
+    });
     
     res.json({ success: true, message: "Conta premium adicionada" });
 });
 
+// Rota para debug - ver dados atuais
+app.get('/debug', (req, res) => {
+    res.json({
+        authorizedDevices,
+        premiumAccounts
+    });
+});
+
 app.listen(3000, () => {
-    console.log('Servidor rodando na porta 3000');
+    console.log('🚀 Servidor rodando na porta 3000');
+    console.log('📊 Debug: http://localhost:3000/debug');
 });
