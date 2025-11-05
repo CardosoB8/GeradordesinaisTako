@@ -1,23 +1,23 @@
 const express = require('express');
 const app = express();
-const port = 3000;
+const port = 3000; // Use a porta que você está usando no Vercel/servidor, se for diferente de 3000
 
-// Configuração para processar JSON no corpo das requisições POST
+// Middleware para processar JSON no corpo das requisições POST
 app.use(express.json());
 
-// Armazenamento com controle de tempo (ATENÇÃO: Use um DB em produção!)
+// Armazenamento de estado (ATENÇÃO: Deve ser persistente em produção - use um banco de dados!)
 let devices = {};
 
 // --- Endpoint de Login (POST) ---
 app.post('/login', (req, res) => {
-    // 1. Recebe os dados
+    // 1. Recebe os dados do corpo (body) da requisição POST
     const { deviceId, username, password } = req.body;
     
     console.log('📱 Tentativa de Login:', { deviceId, username });
     
-    // 2. Verifica se os dados essenciais estão presentes
     if (!deviceId || !username || !password) {
-        return res.status(400).json({ success: false, message: 'Dados incompletos' });
+        // HTTP 400 Bad Request
+        return res.status(400).json({ success: false, message: 'Dados incompletos: ID, Usuário e Senha são obrigatórios.' });
     }
 
     const now = new Date();
@@ -31,25 +31,27 @@ app.post('/login', (req, res) => {
             const timeDiff = (now - new Date(device.firstSeen)) / (1000 * 60 * 60); // Diferença em horas
             
             if (timeDiff >= TRIAL_LIMIT_HOURS) {
+                // Acesso Negado (Trial Expirado)
                 console.log('⏰ Trial expirado para:', deviceId);
                 return res.json({ 
                     success: false, 
                     message: 'Acesso limitado: Seu teste de 1 hora expirou.',
-                    expired: true 
+                    expired: true, // Campo esperado pelo seu código Java
+                    type: 'expired'
                 });
             } else {
-                // Trial ativo
+                // Trial Ativo
                 device.lastSeen = now;
                 const remainingMinutes = Math.floor((TRIAL_LIMIT_HOURS - timeDiff) * 60);
                 console.log(`✅ Acesso trial: ${deviceId} (${remainingMinutes}min restantes)`);
                 return res.json({ 
                     success: true, 
                     message: `Acesso Trial permitido (${remainingMinutes} min restantes)`,
-                    type: 'trial'
+                    type: 'trial' // Campo esperado pelo seu código Java
                 });
             }
         } else {
-            // Primeiro acesso Trial
+            // Novo Trial
             devices[deviceId] = {
                 username: 'user1',
                 type: 'trial',
@@ -65,13 +67,9 @@ app.post('/login', (req, res) => {
         }
     }
 
-    // --- LÓGICA CONTAS PREMIUM (Outras contas com qualquer senha) ---
-    // ATENÇÃO: Em um sistema real, você usaria um banco de dados para verificar credenciais premium
-    
-    // Exemplo Simples de Contas Premium Válidas
+    // --- LÓGICA CONTAS PREMIUM (Exemplo de Credenciais Válidas) ---
     const PREMIUM_ACCOUNTS = {
-        "premium_user": "secret_pass",
-        "pro_member": "12345"
+        "premium_user": "secret_pass"
     };
     
     if (PREMIUM_ACCOUNTS[username] && PREMIUM_ACCOUNTS[username] === password) {
@@ -95,12 +93,11 @@ app.post('/login', (req, res) => {
         });
     }
 
-    // --- FALHA DE CREDENCIAIS ---
+    // --- FALHA DE CREDENCIAIS GERAIS ---
     res.json({ success: false, message: 'Credenciais inválidas: Usuário ou senha incorretos.' });
 });
 
-// --- Endpoint para Remover Device ID (Simula o 'data.js' para remover licença) ---
-// Use esta URL para remover manualmente um ID de dispositivo.
+// --- Endpoint para Remoção (GET) ---
 app.get('/remove', (req, res) => {
     const { deviceId } = req.query;
     if (deviceId && devices[deviceId]) {
@@ -112,8 +109,7 @@ app.get('/remove', (req, res) => {
     }
 });
 
+
 app.listen(port, () => {
-    console.log(`🚀 Servidor rodando em http://localhost:${port}`);
-    console.log(`📡 Endpoint de Login (POST): http://localhost:${port}/login`);
-    console.log(`🗑️ Endpoint de Remoção (GET): http://localhost:${port}/remove?deviceId=...`);
+    console.log(`🚀 Servidor rodando na porta ${port}`);
 });
