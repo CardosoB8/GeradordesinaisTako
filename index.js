@@ -1,106 +1,52 @@
 const express = require('express');
 const app = express();
 
-app.use(express.json());
+// Armazenamento simples
+let devices = {};
 
-// Dados em memória (em produção use um banco)
-let authorizedDevices = [];
-let premiumAccounts = [];
-
-// Conta de teste: user1 / 25 (1 hora)
-app.post('/login', (req, res) => {
-    const { username, password, deviceId } = req.body;
+app.get('/login', (req, res) => {
+    const { deviceId, username, type } = req.query;
     
-    console.log('Login attempt:', { username, deviceId });
+    console.log('📱 Dispositivo registrado:', { deviceId, username, type });
     
-    // SEMPRE retornar JSON válido
-    if (!username || !password || !deviceId) {
-        return res.json({ 
-            success: false, 
-            message: 'Dados incompletos' 
-        });
-    }
-
-    // Conta de teste
-    if (username === "user1" && password === "25") {
-        const existingDevice = authorizedDevices.find(d => 
-            d.deviceId === deviceId && d.username === "user1"
-        );
-        
-        if (existingDevice) {
-            const timeDiff = (Date.now() - new Date(existingDevice.authorizedAt).getTime()) / (1000 * 60 * 60);
-            if (timeDiff >= 1) {
-                return res.json({ 
-                    success: false, 
-                    message: "Acesso limitado - Trial de 1 hora expirado" 
-                });
-            }
-            
-            return res.json({ 
-                success: true, 
-                message: "Login trial realizado com sucesso" 
-            });
+    if (deviceId) {
+        if (!devices[deviceId]) {
+            devices[deviceId] = {
+                firstSeen: new Date(),
+                lastSeen: new Date(),
+                username: username || 'unknown',
+                type: type || 'trial'
+            };
+            console.log('✅ Novo dispositivo:', deviceId);
         } else {
-            // Primeiro login - registrar
-            authorizedDevices.push({
-                username: "user1",
-                deviceId: deviceId,
-                authorizedAt: new Date().toISOString(),
-                accountType: "trial"
-            });
-            
-            return res.json({ 
-                success: true, 
-                message: "Login trial realizado - Você tem 1 hora de acesso" 
-            });
+            devices[deviceId].lastSeen = new Date();
+            console.log('🔄 Dispositivo existente:', deviceId);
         }
     }
     
-    // Verificar contas premium
-    const premiumAccount = premiumAccounts.find(pa => 
-        pa.username === username && pa.deviceId === deviceId
-    );
-    
-    if (premiumAccount) {
-        return res.json({ 
-            success: true, 
-            message: "Login premium realizado com sucesso" 
-        });
-    }
-    
-    // Credenciais inválidas
-    res.json({ 
-        success: false, 
-        message: "Credenciais inválidas" 
-    });
+    // Sempre responde sucesso
+    res.json({ status: 'ok', message: 'Device registered' });
 });
 
-// Rota para adicionar conta premium
-app.post('/add-premium', (req, res) => {
-    const { username, deviceId, adminKey } = req.body;
-    
-    if (adminKey !== "minhaChaveSecreta123") {
-        return res.json({ success: false, message: "Não autorizado" });
-    }
-    
-    premiumAccounts.push({ 
-        username, 
-        deviceId, 
-        addedAt: new Date().toISOString() 
-    });
-    
-    res.json({ success: true, message: "Conta premium adicionada" });
+// Ver dispositivos
+app.get('/devices', (req, res) => {
+    res.json(devices);
 });
 
-// Rota para debug - ver dados atuais
-app.get('/debug', (req, res) => {
-    res.json({
-        authorizedDevices,
-        premiumAccounts
-    });
+// Remover dispositivo
+app.get('/remove', (req, res) => {
+    const { deviceId } = req.query;
+    if (deviceId && devices[deviceId]) {
+        delete devices[deviceId];
+        console.log('🗑️ Dispositivo removido:', deviceId);
+        res.json({ status: 'removed' });
+    } else {
+        res.json({ status: 'not_found' });
+    }
 });
 
 app.listen(3000, () => {
     console.log('🚀 Servidor rodando na porta 3000');
-    console.log('📊 Debug: http://localhost:3000/debug');
+    console.log('📱 Login: http://localhost:3000/login?deviceId=TEST');
+    console.log('👀 Devices: http://localhost:3000/devices');
 });
