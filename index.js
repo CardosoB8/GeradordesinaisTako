@@ -1,86 +1,132 @@
 const express = require('express');
+const fs = require('fs'); // Importa o módulo File System do Node.js
+const path = require('path');
 const app = express();
 const port = 3000; 
 
-// Configuração para processar JSON no corpo das requisições POST
+// Nome e caminho do arquivo de persistência
+const LICENSES_FILE = path.join(__dirname, 'licenses.json');
+
+// Configuração (Middleware)
 app.use(express.json());
 
-// Armazenamento de estado (Em produção, use um Banco de Dados!)
-let devices = {};
-// Estrutura: { 'deviceId_ABC': { username: 'user1', type: 'trial', firstSeen: '...', lastSeen: '...' } }
+// Armazenamento em memória (cache) que será sincronizado com o arquivo
+let devices = {}; 
 
 // --- Contas Premium Estáticas ---
 const PREMIUM_ACCOUNTS = {
-    // FORMATO: "username": "password"
     "seu_primeiro_cliente": "licenca123",
-    "usuario_vip": "minha_senha_secreta",
-    "pro_member": "12345"
+    "usuario_vip": "minha_senha_secreta"
 };
 
-// --- Endpoint de Login (POST) ---
-app.post('/login', (req, res) => {
-    // 1. Recebe os dados
+// =================================================================
+// FUNÇÕES DE PERSISTÊNCIA (LER E SALVAR NO DISCO)
+// =================================================================
+
+/**
+ * Carrega os dados de licença do arquivo JSON para a memória (cache).
+ */
+function loadLicenses() {
+    try {
+        if (fs.existsSync(LICENSES_FILE)) {
+            const data = fs.readFileSync(LICENSES_FILE, 'utf8');
+            devices = JSON.parse(data);
+            console.log(`✅ Licenças carregadas do disco: ${Object.keys(devices).length} IDs.`);
+        } else {
+            // Se o arquivo não existe, cria um objeto vazio.
+            devices = {}; 
+            console.log('⚠️ Arquivo licenses.json não encontrado. Iniciando com dados vazios.');
+        }
+    } catch (error) {
+        console.error('❌ Erro ao carregar licenças:', error.message);
+        devices = {}; // Falha no parse, inicia vazio para evitar travar.
+    }
+}
+
+/**
+ * Salva os dados de licença da memória para o arquivo JSON no disco.
+ * @returns {Promise<void>}
+ */
+function saveLicenses() {
+    return new Promise((resolve, reject) => {
+        const data = JSON.stringify(devices, null, 4); // null, 4 para formatação bonita
+        fs.writeFile(LICENSES_FILE, data, 'utf8', (err) => {
+            if (err) {
+                console.error('❌ Erro ao salvar licenças:', err.message);
+                return reject(err);
+            }
+            console.log('💾 Licenças salvas com sucesso.');
+            resolve();
+        });
+    });
+}
+
+// Carrega os dados ao iniciar o servidor
+loadLicenses();
+
+
+// =================================================================
+// ENDPOINT PRINCIPAL
+// =================================================================
+
+app.post('/login', async (req, res) => { // Tornar a função assíncrona para usar await
     const { deviceId, username, password } = req.body;
     
-    console.log('📱 Tentativa de Login:', { deviceId, username });
-    
+    // ... (restante da validação inicial)
     if (!deviceId || !username || !password) {
         return res.status(400).json({ success: false, message: 'Dados incompletos.' });
     }
 
     const now = new Date();
+    // Usa a cópia em memória (cache) para a leitura
     const deviceRecord = devices[deviceId];
-    
-    // --- LÓGICA CONTA DE TESTE (user1, pass: 25) ---
+    let dataChanged = false; // Flag para saber se precisamos salvar
+
+    // ---------------------- LÓGICA DE TESTE (TRIAL) ----------------------
     if (username === 'user1' && password === '25') {
         const TRIAL_LIMIT_HOURS = 1;
 
         if (deviceRecord) {
-            // ID JÁ REGISTRADO (Voltando)
-            const timeDiff = (now - new Date(deviceRecord.firstSeen)) / (1000 * 60 * 60); // Diferença em horas
+            const timeDiff = (now - new Date(deviceRecord.firstSeen)) / (1000 * 60 * 60);
             
             if (timeDiff >= TRIAL_LIMIT_HOURS) {
                 // TRIAL EXPIRADO
-                console.log('⏰ Trial expirado para:', deviceId);
                 return res.json({ 
                     success: false, 
-                    message: 'Acesso limitado: Seu teste de 1 hora expirou. O ID deste dispositivo não pode mais ser usado.',
+                    message: 'Seu teste de 1 hora expirou. ID bloqueado.',
                     expired: true, 
                     type: 'expired'
                 });
             } else {
-                // TRIAL ATIVO
+                // TRIAL ATIVO - Apenas atualiza a hora e continua
                 deviceRecord.lastSeen = now;
+                dataChanged = true;
                 const remainingMinutes = Math.floor((TRIAL_LIMIT_HOURS - timeDiff) * 60);
-                console.log(`✅ Acesso trial: ${deviceId} (${remainingMinutes}min restantes)`);
-                return res.json({ 
-                    success: true, 
-                    message: `Acesso Trial permitido (${remainingMinutes} min restantes)`,
-                    type: 'trial'
-                });
+                // ... (resposta de sucesso trial)
+                // Se a lógica passou, salve antes de responder
+                if(dataChanged) await saveLicenses(); 
+                return res.json({ success: true, message: `Acesso Trial permitido (${remainingMinutes} min restantes)`, type: 'trial' });
             }
         } else {
-            // NOVO TRIAL (Primeiro Acesso com este ID)
+            // NOVO TRIAL
             devices[deviceId] = {
                 username: 'user1',
                 type: 'trial',
-                firstSeen: now,
-                lastSeen: now,
+                firstSeen: now.toISOString(), // Salva a data em formato string para o JSON
+                lastSeen: now.toISOString(),
             };
+            dataChanged = true;
             console.log('🎉 Novo trial registrado:', deviceId);
-            return res.json({ 
-                success: true, 
-                message: 'Trial iniciado. Você tem 1 hora de acesso.',
-                type: 'trial'
-            });
+            // Salve os dados
+            await saveLicenses(); 
+            return res.json({ success: true, message: 'Trial iniciado. Você tem 1 hora de acesso.', type: 'trial' });
         }
     }
 
-    // --- LÓGICA CONTAS PREMIUM ---
+    // ---------------------- LÓGICA PREMIUM ----------------------
     if (PREMIUM_ACCOUNTS[username] && PREMIUM_ACCOUNTS[username] === password) {
         
         // 1. Verificação de USO ÚNICO (Multi-Dispositivo)
-        // Encontrar se ESTA CONTA JÁ ESTÁ EM USO em *qualquer* outro Device ID
         const activePremiumDevice = Object.keys(devices).find(id => 
             devices[id].username === username && 
             devices[id].type === 'premium' && 
@@ -88,11 +134,10 @@ app.post('/login', (req, res) => {
         );
 
         if (activePremiumDevice) {
-            // Bloqueio de Multi-Dispositivo: A conta está ativa em outro lugar
-            console.log(`❌ Bloqueio Premium: ${username} já está em uso em ${activePremiumDevice}`);
+            // Bloqueio de Multi-Dispositivo
             return res.json({ 
                 success: false, 
-                message: `Esta conta Premium já está em uso em outro dispositivo. ID ativo: ${activePremiumDevice}.`,
+                message: `Esta conta Premium já está em uso em outro dispositivo.`,
                 expired: true, 
                 type: 'multi_device_lock'
             });
@@ -104,16 +149,19 @@ app.post('/login', (req, res) => {
              devices[deviceId] = {
                 username: username,
                 type: 'premium',
-                firstSeen: now,
-                lastSeen: now,
+                firstSeen: now.toISOString(), 
+                lastSeen: now.toISOString(),
             };
-            console.log(`⭐ Nova licença Premium registrada para ${username} no ID: ${deviceId}`);
+            dataChanged = true;
         } else {
             // Atualização de sessão para o mesmo ID/usuário
-            deviceRecord.lastSeen = now;
-            console.log(`✔️ Acesso Premium para ${username} atualizado no ID: ${deviceId}`);
+            deviceRecord.lastSeen = now.toISOString();
+            dataChanged = true;
         }
 
+        // Se a lógica passou e houve alteração, salve no disco
+        if(dataChanged) await saveLicenses();
+        
         return res.json({ 
             success: true, 
             message: `Acesso Premium permitido. Bem-vindo, ${username}!`,
@@ -125,12 +173,14 @@ app.post('/login', (req, res) => {
     res.json({ success: false, message: 'Credenciais inválidas: Usuário ou senha incorretos.' });
 });
 
-// --- Endpoint de Remoção (GET) ---
-// Útil para liberar uma licença premium ou resetar um trial.
-app.get('/remove', (req, res) => {
+// ... (Endpoint /remove também precisa ser atualizado)
+
+app.get('/remove', async (req, res) => { // Torna a função assíncrona
     const { deviceId } = req.query;
     if (deviceId && devices[deviceId]) {
         delete devices[deviceId];
+        // Salva a alteração
+        await saveLicenses(); 
         console.log('🗑️ Dispositivo removido (licença resetada):', deviceId);
         res.json({ success: true, message: `Dispositivo ${deviceId} removido` });
     } else {
@@ -141,5 +191,5 @@ app.get('/remove', (req, res) => {
 
 app.listen(port, () => {
     console.log(`🚀 Servidor de Licenças rodando na porta ${port}`);
-    console.log('Lembre-se de rodar em um servidor acessível e usar HTTPS.');
+    console.log('Dados de licença persistentes via licenses.json.');
 });
