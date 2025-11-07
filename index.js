@@ -45,8 +45,8 @@ app.use(express.json());
 
 // --- Contas Premium Estáticas ---
 const PREMIUM_ACCOUNTS = {
-    "seu_primeiro_cliente": "licenca123",
-    "usuario_vip": "minha_senha_secreta"
+    "mrodoso": "20050202",
+    "premium14": "8367266472"
 };
 
 // =================================================================
@@ -93,7 +93,7 @@ app.post('/login', async (req, res) => {
     const deviceRecord = await getDeviceData(deviceId);
     
     // ---------------------- LÓGICA DE TESTE (TRIAL: user1/25) ----------------------
-    if (username === 'user1' && password === '25') {
+    if (username === 'teste1' && password === '2025') {
         const TRIAL_LIMIT_HOURS = 1;
 
         if (deviceRecord && deviceRecord.username === 'user1') {
