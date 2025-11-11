@@ -46,7 +46,56 @@ app.use(express.json());
 // --- Contas Premium Estáticas ---
 const PREMIUM_ACCOUNTS = {
     "mrodoso": "20050202",
-    "premium14": "8367266472"
+    "premium14": "8367266472",
+    "premium01": "84778637276",
+    "premium02": "85827372775",
+    "premium03": "86927463728",
+    "premium04": "87928374659",
+    "premium05": "88746372819",
+    "premium06": "89736281947",
+    "premium07": "90817263548",
+    "premium08": "91827364506",
+    "premium09": "92736481920",
+    "premium10": "93827164503",
+    "premium11": "94738291056",
+    "premium12": "95847382910",
+    "premium13": "96857483921",
+    "premium15": "97868574839",
+    "premium16": "98765847392",
+    "premium17": "99685748302",
+    "premium18": "10085748392",
+    "premium19": "10195847382",
+    "premium20": "10294857648",
+    "premium21": "10385749203",
+    "premium22": "10475849302",
+    "premium23": "10584930291",
+    "premium24": "10675849301",
+    "premium25": "10785940382",
+    "premium26": "10876958403",
+    "premium27": "10985746382",
+    "premium28": "11095847362",
+    "premium29": "11185749302",
+    "premium30": "11295847301",
+    "premium31": "11385749203",
+    "premium32": "11495847362",
+    "premium33": "11585749382",
+    "premium34": "11695847301",
+    "premium35": "11785749203",
+    "premium36": "11895847362",
+    "premium37": "11985749382",
+    "premium38": "12095847301",
+    "premium39": "12185749203",
+    "premium40": "12295847362",
+    "premium41": "12385749382",
+    "premium42": "12495847301",
+    "premium43": "12585749203",
+    "premium44": "12695847362",
+    "premium45": "12785749382",
+    "premium46": "12895847301",
+    "premium47": "12985749203",
+    "premium48": "13095847362",
+    "premium49": "13185749382",
+    "premium50": "13295847301"
 };
 
 // =================================================================
@@ -94,7 +143,7 @@ app.post('/login', async (req, res) => {
     
     // ---------------------- LÓGICA DE TESTE (TRIAL: user1/25) ----------------------
     if (username === 'teste1' && password === '2025') {
-        const TRIAL_LIMIT_HOURS = 1;
+        const TRIAL_LIMIT_HOURS = 24;
 
         if (deviceRecord && deviceRecord.username === 'user1') {
             const timeDiff = (now - new Date(deviceRecord.firstSeen)) / (1000 * 60 * 60);
