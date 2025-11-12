@@ -142,29 +142,40 @@ app.post('/login', async (req, res) => {
     const deviceRecord = await getDeviceData(deviceId);
     
     // ---------------------- LÓGICA DE TESTE (TRIAL: user1/25) ----------------------
-    if (username === 'teste1' && password === '2025') {
-        const TRIAL_LIMIT_HOURS = 24;
+    if (username === 'testefreemrdoso' && password === '2025') {
+    const TRIAL_LIMIT_HOURS = 168;
 
-        if (deviceRecord && deviceRecord.username === 'user1') {
-            const timeDiff = (now - new Date(deviceRecord.firstSeen)) / (1000 * 60 * 60);
+    if (deviceRecord && deviceRecord.username === 'user1') {
+        const timeDiff = (now - new Date(deviceRecord.firstSeen)) / (1000 * 60 * 60);
 
-            if (timeDiff >= TRIAL_LIMIT_HOURS) {
-                return res.json({ success: false, message: 'Seu teste de 1 hora expirou. ID bloqueado.', expired: true, type: 'expired' });
-            } else {
-                deviceRecord.lastSeen = now.toISOString();
-                await setDeviceData(deviceId, deviceRecord); 
-                const remainingMinutes = Math.floor((TRIAL_LIMIT_HOURS - timeDiff) * 60);
-                return res.json({ success: true, message: `Acesso Trial permitido (${remainingMinutes} min restantes)`, type: 'trial' });
-            }
+        if (timeDiff >= TRIAL_LIMIT_HOURS) {
+            return res.json({ success: false, message: 'Seu teste de 1 hora expirou. ID bloqueado.', expired: true, type: 'expired' });
         } else {
-            const newRecord = {
-                username: 'user1', type: 'trial',
-                firstSeen: now.toISOString(), lastSeen: now.toISOString(),
-            };
-            await setDeviceData(deviceId, newRecord); 
-            return res.json({ success: true, message: 'Trial iniciado. Você tem 24 horas de acesso.', type: 'trial' });
+            deviceRecord.lastSeen = now.toISOString();
+            await setDeviceData(deviceId, deviceRecord); 
+            
+            const remainingHours = TRIAL_LIMIT_HOURS - timeDiff;
+            let remainingMessage;
+            
+            if (remainingHours >= 24) {
+                const remainingDays = Math.floor(remainingHours / 24);
+                remainingMessage = `${remainingDays} dia${remainingDays > 1 ? 's' : ''} restante${remainingDays > 1 ? 's' : ''}`;
+            } else {
+                const remainingHoursInt = Math.floor(remainingHours);
+                remainingMessage = `${remainingHoursInt} hora${remainingHoursInt > 1 ? 's' : ''} restante${remainingHoursInt > 1 ? 's' : ''}`;
+            }
+            
+            return res.json({ success: true, message: `Acesso Trial permitido (${remainingMessage})`, type: 'trial' });
         }
+    } else {
+        const newRecord = {
+            username: 'user1', type: 'trial',
+            firstSeen: now.toISOString(), lastSeen: now.toISOString(),
+        };
+        await setDeviceData(deviceId, newRecord); 
+        return res.json({ success: true, message: 'Trial iniciado. Você tem 24 horas de acesso.', type: 'trial' });
     }
+}
 
     // ---------------------- LÓGICA PREMIUM ----------------------
     if (PREMIUM_ACCOUNTS[username] && PREMIUM_ACCOUNTS[username] === password) {
