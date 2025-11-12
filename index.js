@@ -162,7 +162,7 @@ app.post('/login', async (req, res) => {
                 firstSeen: now.toISOString(), lastSeen: now.toISOString(),
             };
             await setDeviceData(deviceId, newRecord); 
-            return res.json({ success: true, message: 'Trial iniciado. Você tem 1 hora de acesso.', type: 'trial' });
+            return res.json({ success: true, message: 'Trial iniciado. Você tem 24 horas de acesso.', type: 'trial' });
         }
     }
 
