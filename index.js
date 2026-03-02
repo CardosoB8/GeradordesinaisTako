@@ -776,11 +776,12 @@ app.post('/login', async (req, res) => {
             const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
             const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
             
-            return res.json({ 
-                success: true, 
-                message: \`Acesso permitido. \${remainingHours}h \${remainingMinutes}m restantes.\`,
-                type: 'temp_20h'
-            });
+            // Em vez de template string com crase, use concatenação
+return res.json({ 
+    success: true, 
+    message: "Acesso permitido. " + remainingHours + "h " + remainingMinutes + "m restantes.",
+    type: 'temp_20h'
+});
             
         } else if (license.registeredDeviceId !== deviceId) {
             return res.json({ 
