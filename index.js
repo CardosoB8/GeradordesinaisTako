@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
@@ -42,11 +41,11 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =================================================================
-// CONFIGURAÇÕES DO REDIS
+// CONFIGURAÇÕES DO REDIS (variáveis de ambiente)
 // =================================================================
-const REDIS_HOST = process.env.REDIS_HOST || 'redis-16345.c81.us-east-1-2.ec2.redns.redis-cloud.com';
-const REDIS_PORT = process.env.REDIS_PORT || 16345;
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD || 'UnK847ICOOWU5DS7RTGOHbauOq0PemVj';
+const REDIS_HOST = process.env.REDIS_HOST;
+const REDIS_PORT = process.env.REDIS_PORT;
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
 
 // Configurações de sessão e segurança
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(64).toString('hex');
@@ -56,34 +55,46 @@ const STEP_TIME_MS = 15000; // 15 segundos
 const TOKEN_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
 
 // =================================================================
-// INICIALIZA REDIS
+// INICIALIZA REDIS (com validação)
 // =================================================================
-const redisClient = createClient({
-    username: 'default',
-    password: REDIS_PASSWORD,
-    socket: {
-        host: REDIS_HOST,
-        port: REDIS_PORT,
-        tls: { rejectUnauthorized: false }
-    }
-});
+let redisClient;
 
-redisClient.on('error', err => console.error('❌ Redis Error:', err));
-
-async function connectRedis() {
-    try {
-        await redisClient.connect();
-        console.log("✔️ Conectado ao Redis");
-        
-        // Mostra senha do admin no console (apenas em desenvolvimento)
-        if (process.env.NODE_ENV !== 'production') {
-            console.log(`\n🔐 Admin: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}\n`);
+if (REDIS_HOST && REDIS_PORT && REDIS_PASSWORD) {
+    redisClient = createClient({
+        username: 'default',
+        password: REDIS_PASSWORD,
+        socket: {
+            host: REDIS_HOST,
+            port: REDIS_PORT,
+            tls: { rejectUnauthorized: false }
         }
-    } catch (err) {
-        console.error("❌ Falha no Redis:", err.message);
+    });
+
+    redisClient.on('error', err => console.error('❌ Redis Error:', err.message));
+
+    async function connectRedis() {
+        try {
+            await redisClient.connect();
+            console.log("✔️ Conectado ao Redis");
+            
+            if (process.env.NODE_ENV !== 'production') {
+                console.log(`\n🔐 Admin: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}\n`);
+            }
+        } catch (err) {
+            console.error("❌ Falha no Redis:", err.message);
+        }
     }
+    connectRedis();
+} else {
+    console.warn("⚠️ Redis não configurado. Usando modo sem persistência.");
+    // Cliente mock para desenvolvimento
+    redisClient = {
+        get: async () => null,
+        set: async () => {},
+        del: async () => {},
+        keys: async () => []
+    };
 }
-connectRedis();
 
 // =================================================================
 // FUNÇÕES DO REDIS
@@ -132,7 +143,6 @@ async function getAllLicenses() {
 // MIDDLEWARE DE AUTENTICAÇÃO ADMIN
 // =================================================================
 function authenticateAdmin(req, res, next) {
-    // Pega credenciais do header Authorization
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Basic ')) {
@@ -143,12 +153,10 @@ function authenticateAdmin(req, res, next) {
         });
     }
     
-    // Decodifica base64
     const base64Credentials = authHeader.split(' ')[1];
     const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
     const [username, password] = credentials.split(':');
     
-    // Verifica credenciais
     if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
         next();
     } else {
@@ -527,7 +535,7 @@ app.get('/api/next-step', async (req, res) => {
     const timeElapsed = Date.now() - payload.iat;
     if (timeElapsed < STEP_TIME_MS - 2000) {
         return res.status(429).json({ 
-            error: `Aguarde mais ${Math.ceil((STEP_TIME_MS - timeElapsed)/1000)} segundos` 
+            error: 'Aguarde mais ' + Math.ceil((STEP_TIME_MS - timeElapsed)/1000) + ' segundos' 
         });
     }
 
@@ -552,7 +560,7 @@ app.get('/api/next-step', async (req, res) => {
         await setLicense(credentials.username, licenseData);
         
         return res.json({ 
-            redirect: `/success?u=${encodeURIComponent(credentials.username)}&p=${encodeURIComponent(credentials.password)}`
+            redirect: '/success?u=' + encodeURIComponent(credentials.username) + '&p=' + encodeURIComponent(credentials.password)
         });
     }
     
@@ -562,7 +570,7 @@ app.get('/api/next-step', async (req, res) => {
     usedTokens.set(token, payload.exp);
     
     return res.json({ 
-        redirect: `/step?token=${newToken}`
+        redirect: '/step?token=' + newToken
     });
 });
 
@@ -765,6 +773,7 @@ app.post('/login', async (req, res) => {
         }
         
         if (!license.registeredDeviceId) {
+            // Primeiro acesso - vincula este device
             license.registeredDeviceId = deviceId;
             license.firstSeen = now.toISOString();
             license.lastSeen = now.toISOString();
@@ -776,12 +785,11 @@ app.post('/login', async (req, res) => {
             const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
             const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
             
-            // Em vez de template string com crase, use concatenação
-return res.json({ 
-    success: true, 
-    message: "Acesso permitido. " + remainingHours + "h " + remainingMinutes + "m restantes.",
-    type: 'temp_20h'
-});
+            return res.json({ 
+                success: true, 
+                message: "Acesso permitido. " + remainingHours + "h " + remainingMinutes + "m restantes.",
+                type: 'temp_20h'
+            });
             
         } else if (license.registeredDeviceId !== deviceId) {
             return res.json({ 
@@ -800,7 +808,7 @@ return res.json({
             
             return res.json({ 
                 success: true, 
-                message: \`Acesso permitido. \${remainingHours}h \${remainingMinutes}m restantes.\`,
+                message: "Acesso permitido. " + remainingHours + "h " + remainingMinutes + "m restantes.",
                 type: 'temp_20h'
             });
         }
@@ -906,7 +914,6 @@ app.get('/admin', (req, res) => {
                 const username = document.getElementById('username').value;
                 const password = document.getElementById('password').value;
                 
-                // Cria Basic Auth header
                 const auth = btoa(username + ':' + password);
                 
                 try {
@@ -917,7 +924,6 @@ app.get('/admin', (req, res) => {
                     });
                     
                     if (response.ok) {
-                        // Salva no sessionStorage para próximas requisições
                         sessionStorage.setItem('adminAuth', auth);
                         window.location.href = '/admin/dashboard';
                     } else {
@@ -1158,7 +1164,7 @@ app.get('/admin/remove', authenticateAdmin, async (req, res) => {
             }
         }
         
-        return res.json({ success: true, message: `Licença ${username} removida` });
+        return res.json({ success: true, message: 'Licença ' + username + ' removida' });
         
     } else if (deviceId) {
         const username = await getDeviceUsername(deviceId);
@@ -1166,7 +1172,7 @@ app.get('/admin/remove', authenticateAdmin, async (req, res) => {
             await redisClient.del(`license:${username}`);
             await redisClient.del(`device:${deviceId}`);
         }
-        return res.json({ success: true, message: `Device ${deviceId} removido` });
+        return res.json({ success: true, message: 'Device ' + deviceId + ' removido' });
         
     } else {
         return res.status(400).json({ success: false, message: 'Parâmetro necessário' });
@@ -1178,7 +1184,7 @@ app.get('/admin/remove', authenticateAdmin, async (req, res) => {
 // =================================================================
 app.listen(PORT, () => {
     console.log(`
-    🚀 Servidor Único rodando na porta ${PORT}
+    🚀 Servidor rodando na porta ${PORT}
     
     👤 Público:
         GET  /              - Página inicial
@@ -1187,17 +1193,10 @@ app.listen(PORT, () => {
         GET  /success       - Credenciais geradas
         POST /login         - Login do app
         
-    🔐 Admin (protegido):
-        GET  /admin                     - Página de login admin
-        GET  /admin/dashboard            - Painel admin
-        GET  /admin/check/:username      - Ver licença
-        GET  /admin/remove?username=XXX  - Remover por username
-        GET  /admin/remove?deviceId=XXX  - Remover por device
-        GET  /admin/logout               - Sair
+    🔐 Admin:
+        GET  /admin         - Página de login
+        GET  /admin/dashboard - Painel admin
         
-    👤 Admin: ${ADMIN_USERNAME}
-    🔑 Senha: ${ADMIN_PASSWORD} (guarde esta senha!)
-    
     ⏱️  ${STEP_TIME_MS/1000}s por etapa · 3 etapas
     `);
 });
