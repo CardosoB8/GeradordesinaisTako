@@ -30,36 +30,27 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Rate limit mais restrito para admin
-const adminLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 20,
-    message: { error: 'Muitas tentativas de admin' }
-});
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =================================================================
-// CONFIGURAÇÕES DO REDIS (variáveis de ambiente)
+// CONFIGURAÇÕES DIRETAS (para teste)
 // =================================================================
-const REDIS_HOST = process.env.REDIS_HOST;
-const REDIS_PORT = process.env.REDIS_PORT;
-const REDIS_PASSWORD = process.env.REDIS_PASSWORD;
-
-// Configurações de sessão e segurança
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(64).toString('hex');
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || crypto.randomBytes(16).toString('hex');
-const STEP_TIME_MS = 15000; // 15 segundos
-const TOKEN_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
+const REDIS_HOST = 'redis-16345.c81.us-east-1-2.ec2.redns.redis-cloud.com';
+const REDIS_PORT = 16345;
+const REDIS_PASSWORD = 'UnK847ICOOWU5DS7RTGOHbauOq0PemVj';
+const SESSION_SECRET = 'minha_chave_super_secreta_123456789';
+const ADMIN_USERNAME = 'admin';
+const ADMIN_PASSWORD = 'admin123';
+const STEP_TIME_MS = 15000;
+const TOKEN_EXPIRATION_MS = 10 * 60 * 1000;
 
 // =================================================================
-// INICIALIZA REDIS (com validação)
+// INICIALIZA REDIS
 // =================================================================
 let redisClient;
 
-if (REDIS_HOST && REDIS_PORT && REDIS_PASSWORD) {
+try {
     redisClient = createClient({
         username: 'default',
         password: REDIS_PASSWORD,
@@ -76,18 +67,14 @@ if (REDIS_HOST && REDIS_PORT && REDIS_PASSWORD) {
         try {
             await redisClient.connect();
             console.log("✔️ Conectado ao Redis");
-            
-            if (process.env.NODE_ENV !== 'production') {
-                console.log(`\n🔐 Admin: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}\n`);
-            }
+            console.log(`\n🔐 Admin: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}\n`);
         } catch (err) {
             console.error("❌ Falha no Redis:", err.message);
         }
     }
     connectRedis();
-} else {
-    console.warn("⚠️ Redis não configurado. Usando modo sem persistência.");
-    // Cliente mock para desenvolvimento
+} catch (error) {
+    console.error("❌ Erro ao criar cliente Redis:", error.message);
     redisClient = {
         get: async () => null,
         set: async () => {},
@@ -168,7 +155,7 @@ function authenticateAdmin(req, res, next) {
 }
 
 // =================================================================
-// FUNÇÕES DE TOKEN (para as etapas)
+// FUNÇÕES DE TOKEN
 // =================================================================
 function generateToken(step, ip) {
     const payload = {
@@ -212,7 +199,6 @@ function verifyToken(token, ip) {
     }
 }
 
-// Cache para tokens usados
 const usedTokens = new Map();
 setInterval(() => {
     const now = Date.now();
@@ -239,7 +225,7 @@ function generateCredentials() {
 }
 
 // =================================================================
-// ROTA PRINCIPAL - PÁGINA INICIAL
+// ROTA PRINCIPAL
 // =================================================================
 app.get('/', (req, res) => {
     const html = `
@@ -324,7 +310,7 @@ app.get('/', (req, res) => {
 });
 
 // =================================================================
-// INICIAR PROCESSO DE ETAPAS
+// INICIAR PROCESSO
 // =================================================================
 app.get('/start', (req, res) => {
     const token = generateToken(1, req.ip);
@@ -332,7 +318,7 @@ app.get('/start', (req, res) => {
 });
 
 // =================================================================
-// PÁGINA DE ETAPA (ÚNICA)
+// PÁGINA DE ETAPA
 // =================================================================
 app.get('/step', (req, res) => {
     const token = req.query.token;
@@ -539,7 +525,6 @@ app.get('/api/next-step', async (req, res) => {
         });
     }
 
-    // FINAL DAS ETAPAS
     if (clientStep >= 3) {
         usedTokens.set(token, payload.exp);
         
@@ -564,7 +549,6 @@ app.get('/api/next-step', async (req, res) => {
         });
     }
     
-    // PRÓXIMA ETAPA
     const nextStep = clientStep + 1;
     const newToken = generateToken(nextStep, clientIp);
     usedTokens.set(token, payload.exp);
@@ -732,7 +716,7 @@ app.get('/success', (req, res) => {
 });
 
 // =================================================================
-// ENDPOINT DE LOGIN (usado pelo app)
+// LOGIN DO APP
 // =================================================================
 app.post('/login', async (req, res) => {
     const { deviceId, username, password } = req.body;
@@ -773,7 +757,6 @@ app.post('/login', async (req, res) => {
         }
         
         if (!license.registeredDeviceId) {
-            // Primeiro acesso - vincula este device
             license.registeredDeviceId = deviceId;
             license.firstSeen = now.toISOString();
             license.lastSeen = now.toISOString();
@@ -821,10 +804,8 @@ app.post('/login', async (req, res) => {
 });
 
 // =================================================================
-// ÁREA ADMIN (COM AUTENTICAÇÃO!)
+// ÁREA ADMIN
 // =================================================================
-
-// Página de login admin
 app.get('/admin', (req, res) => {
     const html = `
     <!DOCTYPE html>
@@ -941,7 +922,6 @@ app.get('/admin', (req, res) => {
     res.send(html);
 });
 
-// Dashboard admin (protegido)
 app.get('/admin/dashboard', authenticateAdmin, async (req, res) => {
     const licenses = await getAllLicenses();
     
@@ -1114,7 +1094,6 @@ app.get('/admin/dashboard', authenticateAdmin, async (req, res) => {
     res.send(html);
 });
 
-// Logout admin
 app.get('/admin/logout', (req, res) => {
     res.send(`
     <script>
@@ -1124,9 +1103,6 @@ app.get('/admin/logout', (req, res) => {
     `);
 });
 
-// =================================================================
-// ENDPOINTS ADMIN (PROTEGIDOS)
-// =================================================================
 app.get('/admin/check/:username', authenticateAdmin, async (req, res) => {
     const { username } = req.params;
     const license = await getLicense(username);
@@ -1193,7 +1169,7 @@ app.listen(PORT, () => {
         GET  /success       - Credenciais geradas
         POST /login         - Login do app
         
-    🔐 Admin:
+    🔐 Admin: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}
         GET  /admin         - Página de login
         GET  /admin/dashboard - Painel admin
         
