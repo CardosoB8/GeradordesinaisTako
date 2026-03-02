@@ -1,7 +1,6 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
-const { createClient } = require('redis');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
@@ -22,7 +21,7 @@ app.use(helmet({
     }
 }));
 
-// Rate limit geral
+// Rate limit
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 100,
@@ -34,96 +33,67 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =================================================================
-// CONFIGURAÇÕES DIRETAS (para teste)
+// ARMAZENAMENTO EM MEMÓRIA (SEM REDIS!)
 // =================================================================
-const REDIS_HOST = 'redis-16345.c81.us-east-1-2.ec2.redns.redis-cloud.com';
-const REDIS_PORT = 16345;
-const REDIS_PASSWORD = 'UnK847ICOOWU5DS7RTGOHbauOq0PemVj';
+const licenses = new Map();      // license:username -> dados
+const devices = new Map();       // device:deviceId -> username
+const usedTokens = new Map();    // tokens usados
+
+// Limpeza periódica de tokens
+setInterval(() => {
+    const now = Date.now();
+    for (const [token, exp] of usedTokens.entries()) {
+        if (now > exp) usedTokens.delete(token);
+    }
+}, 5 * 60 * 1000);
+
+// Limpeza de licenças expiradas (a cada hora)
+setInterval(() => {
+    const now = new Date();
+    for (const [username, license] of licenses.entries()) {
+        if (license.expiresAt && new Date(license.expiresAt) < now) {
+            licenses.delete(username);
+            // Remove também dos devices associados
+            for (const [deviceId, uname] of devices.entries()) {
+                if (uname === username) {
+                    devices.delete(deviceId);
+                }
+            }
+        }
+    }
+    console.log('🧹 Limpeza de licenças expiradas concluída');
+}, 60 * 60 * 1000);
+
+// =================================================================
+// CONFIGURAÇÕES
+// =================================================================
 const SESSION_SECRET = 'minha_chave_super_secreta_123456789';
 const ADMIN_USERNAME = 'admin';
 const ADMIN_PASSWORD = 'admin123';
-const STEP_TIME_MS = 15000;
-const TOKEN_EXPIRATION_MS = 10 * 60 * 1000;
+const STEP_TIME_MS = 15000; // 15 segundos
+const TOKEN_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
 
 // =================================================================
-// INICIALIZA REDIS
-// =================================================================
-let redisClient;
-
-try {
-    redisClient = createClient({
-        username: 'default',
-        password: REDIS_PASSWORD,
-        socket: {
-            host: REDIS_HOST,
-            port: REDIS_PORT,
-            tls: { rejectUnauthorized: false }
-        }
-    });
-
-    redisClient.on('error', err => console.error('❌ Redis Error:', err.message));
-
-    async function connectRedis() {
-        try {
-            await redisClient.connect();
-            console.log("✔️ Conectado ao Redis");
-            console.log(`\n🔐 Admin: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}\n`);
-        } catch (err) {
-            console.error("❌ Falha no Redis:", err.message);
-        }
-    }
-    connectRedis();
-} catch (error) {
-    console.error("❌ Erro ao criar cliente Redis:", error.message);
-    redisClient = {
-        get: async () => null,
-        set: async () => {},
-        del: async () => {},
-        keys: async () => []
-    };
-}
-
-// =================================================================
-// FUNÇÕES DO REDIS
+// FUNÇÕES DE ARMAZENAMENTO
 // =================================================================
 async function getLicense(username) {
-    try {
-        const data = await redisClient.get(`license:${username}`);
-        return data ? JSON.parse(data) : null;
-    } catch (e) {
-        return null;
-    }
+    return licenses.get(username) || null;
 }
 
 async function setLicense(username, data) {
-    await redisClient.set(`license:${username}`, JSON.stringify(data));
+    licenses.set(username, data);
 }
 
 async function getDeviceUsername(deviceId) {
-    return await redisClient.get(`device:${deviceId}`);
+    return devices.get(deviceId) || null;
 }
 
 async function setDevice(deviceId, username) {
-    await redisClient.set(`device:${deviceId}`, username);
+    devices.set(deviceId, username);
 }
 
 async function getAllLicenses() {
-    try {
-        const keys = await redisClient.keys('license:*');
-        const licenses = [];
-        
-        for (const key of keys) {
-            const data = await redisClient.get(key);
-            if (data) {
-                licenses.push(JSON.parse(data));
-            }
-        }
-        
-        return licenses;
-    } catch (e) {
-        console.error('Erro ao listar licenças:', e);
-        return [];
-    }
+    return Array.from(licenses.values());
 }
 
 // =================================================================
@@ -198,14 +168,6 @@ function verifyToken(token, ip) {
         return null;
     }
 }
-
-const usedTokens = new Map();
-setInterval(() => {
-    const now = Date.now();
-    for (const [token, exp] of usedTokens.entries()) {
-        if (now > exp) usedTokens.delete(token);
-    }
-}, 5 * 60 * 1000);
 
 // =================================================================
 // FUNÇÃO PARA GERAR CREDENCIAIS DE 20h
@@ -525,6 +487,7 @@ app.get('/api/next-step', async (req, res) => {
         });
     }
 
+    // FINAL DAS ETAPAS
     if (clientStep >= 3) {
         usedTokens.set(token, payload.exp);
         
@@ -544,11 +507,14 @@ app.get('/api/next-step', async (req, res) => {
         
         await setLicense(credentials.username, licenseData);
         
+        console.log('✅ Credenciais geradas:', credentials.username);
+        
         return res.json({ 
             redirect: '/success?u=' + encodeURIComponent(credentials.username) + '&p=' + encodeURIComponent(credentials.password)
         });
     }
     
+    // PRÓXIMA ETAPA
     const nextStep = clientStep + 1;
     const newToken = generateToken(nextStep, clientIp);
     usedTokens.set(token, payload.exp);
@@ -757,6 +723,7 @@ app.post('/login', async (req, res) => {
         }
         
         if (!license.registeredDeviceId) {
+            // Primeiro acesso - vincula este device
             license.registeredDeviceId = deviceId;
             license.firstSeen = now.toISOString();
             license.lastSeen = now.toISOString();
@@ -923,9 +890,9 @@ app.get('/admin', (req, res) => {
 });
 
 app.get('/admin/dashboard', authenticateAdmin, async (req, res) => {
-    const licenses = await getAllLicenses();
+    const allLicenses = await getAllLicenses();
     
-    const licenseRows = licenses.map(license => {
+    const licenseRows = allLicenses.map(license => {
         const now = new Date();
         const expiresAt = new Date(license.expiresAt);
         const isExpired = now > expiresAt;
@@ -1035,15 +1002,15 @@ app.get('/admin/dashboard', authenticateAdmin, async (req, res) => {
             <div class="stats">
                 <div class="stat-card">
                     <div>Total Licenças</div>
-                    <div class="stat-number">${licenses.length}</div>
+                    <div class="stat-number">${allLicenses.length}</div>
                 </div>
                 <div class="stat-card">
                     <div>Ativas</div>
-                    <div class="stat-number">${licenses.filter(l => new Date() < new Date(l.expiresAt)).length}</div>
+                    <div class="stat-number">${allLicenses.filter(l => new Date() < new Date(l.expiresAt)).length}</div>
                 </div>
                 <div class="stat-card">
                     <div>Vinculadas</div>
-                    <div class="stat-number">${licenses.filter(l => l.registeredDeviceId).length}</div>
+                    <div class="stat-number">${allLicenses.filter(l => l.registeredDeviceId).length}</div>
                 </div>
             </div>
             
@@ -1130,23 +1097,22 @@ app.get('/admin/remove', authenticateAdmin, async (req, res) => {
     const { username, deviceId } = req.query;
     
     if (username) {
-        await redisClient.del(`license:${username}`);
+        licenses.delete(username);
         
-        const keys = await redisClient.keys('device:*');
-        for (const key of keys) {
-            const val = await redisClient.get(key);
-            if (val === username) {
-                await redisClient.del(key);
+        // Remove também dos devices associados
+        for (const [device, uname] of devices.entries()) {
+            if (uname === username) {
+                devices.delete(device);
             }
         }
         
         return res.json({ success: true, message: 'Licença ' + username + ' removida' });
         
     } else if (deviceId) {
-        const username = await getDeviceUsername(deviceId);
+        const username = devices.get(deviceId);
         if (username) {
-            await redisClient.del(`license:${username}`);
-            await redisClient.del(`device:${deviceId}`);
+            licenses.delete(username);
+            devices.delete(deviceId);
         }
         return res.json({ success: true, message: 'Device ' + deviceId + ' removido' });
         
@@ -1173,6 +1139,7 @@ app.listen(PORT, () => {
         GET  /admin         - Página de login
         GET  /admin/dashboard - Painel admin
         
+    ⚡ SEM REDIS! Usando armazenamento em memória.
     ⏱️  ${STEP_TIME_MS/1000}s por etapa · 3 etapas
     `);
 });
