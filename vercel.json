@@ -16,6 +16,30 @@
       "dest": "/index.js"
     },
     {
+      "src": "/admin/(.*)",
+      "dest": "/index.js"
+    },
+    {
+      "src": "/login",
+      "dest": "/index.js"
+    },
+    {
+      "src": "/register-20h-license",
+      "dest": "/index.js"
+    },
+    {
+      "src": "/start",
+      "dest": "/index.js"
+    },
+    {
+      "src": "/step",
+      "dest": "/index.js"
+    },
+    {
+      "src": "/success",
+      "dest": "/index.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "/public/$1"
     },
