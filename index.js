@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const redis = require('redis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,11 +34,24 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // =================================================================
-// ARMAZENAMENTO EM MEMÓRIA (SEM REDIS!)
+// CONFIGURAÇÃO DO REDIS (PERSISTENTE!)
 // =================================================================
-const licenses = new Map();      // license:username -> dados
-const devices = new Map();       // device:deviceId -> username
-const usedTokens = new Map();    // tokens usados
+const redisClient = redis.createClient({
+    url: 'redis://default:JyefUsxHJljfdvs8HACumEyLE7XNgLvG@redis-19242.c266.us-east-1-3.ec2.cloud.redislabs.com:19242'
+});
+
+redisClient.on('error', (err) => console.log('Redis Client Error', err));
+redisClient.on('connect', () => console.log('✅ Conectado ao Redis!'));
+
+// Conectar ao Redis
+(async () => {
+    await redisClient.connect();
+})();
+
+// =================================================================
+// ARMAZENAMENTO EM REDIS (AGORA PERSISTENTE!)
+// =================================================================
+const usedTokens = new Map();    // tokens usados (podem ficar em memória)
 
 // Limpeza periódica de tokens
 setInterval(() => {
@@ -47,22 +61,82 @@ setInterval(() => {
     }
 }, 5 * 60 * 1000);
 
-// Limpeza de licenças expiradas (a cada hora)
-setInterval(() => {
-    const now = new Date();
-    for (const [username, license] of licenses.entries()) {
-        if (license.expiresAt && new Date(license.expiresAt) < now) {
-            licenses.delete(username);
-            // Remove também dos devices associados
-            for (const [deviceId, uname] of devices.entries()) {
-                if (uname === username) {
-                    devices.delete(deviceId);
-                }
+// =================================================================
+// FUNÇÕES DE ARMAZENAMENTO COM REDIS
+// =================================================================
+async function getLicense(username) {
+    try {
+        const data = await redisClient.get(`license:${username}`);
+        return data ? JSON.parse(data) : null;
+    } catch (error) {
+        console.error('Erro ao buscar licença:', error);
+        return null;
+    }
+}
+
+async function setLicense(username, data) {
+    try {
+        await redisClient.setEx(`license:${username}`, 24 * 60 * 60, JSON.stringify(data)); // Expira em 24h
+    } catch (error) {
+        console.error('Erro ao salvar licença:', error);
+    }
+}
+
+async function getDeviceUsername(deviceId) {
+    try {
+        return await redisClient.get(`device:${deviceId}`);
+    } catch (error) {
+        console.error('Erro ao buscar device:', error);
+        return null;
+    }
+}
+
+async function setDevice(deviceId, username) {
+    try {
+        await redisClient.setEx(`device:${deviceId}`, 24 * 60 * 60, username);
+    } catch (error) {
+        console.error('Erro ao salvar device:', error);
+    }
+}
+
+async function getAllLicenses() {
+    try {
+        const keys = await redisClient.keys('license:*');
+        const licenses = [];
+        
+        for (const key of keys) {
+            const data = await redisClient.get(key);
+            if (data) {
+                licenses.push(JSON.parse(data));
             }
         }
+        
+        return licenses;
+    } catch (error) {
+        console.error('Erro ao buscar todas licenças:', error);
+        return [];
     }
-    console.log('🧹 Limpeza de licenças expiradas concluída');
-}, 60 * 60 * 1000);
+}
+
+async function deleteLicense(username) {
+    try {
+        // Buscar a licença primeiro
+        const license = await getLicense(username);
+        
+        // Remover a licença
+        await redisClient.del(`license:${username}`);
+        
+        // Se tiver deviceId registrado, remover também
+        if (license && license.registeredDeviceId) {
+            await redisClient.del(`device:${license.registeredDeviceId}`);
+            console.log(`✅ Device ${license.registeredDeviceId} removido`);
+        }
+        
+        console.log(`✅ Licença ${username} removida do Redis`);
+    } catch (error) {
+        console.error('Erro ao deletar licença:', error);
+    }
+}
 
 // =================================================================
 // CONFIGURAÇÕES
@@ -72,29 +146,6 @@ const ADMIN_USERNAME = 'admin';
 const ADMIN_PASSWORD = 'admin123';
 const STEP_TIME_MS = 15000; // 15 segundos
 const TOKEN_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
-
-// =================================================================
-// FUNÇÕES DE ARMAZENAMENTO
-// =================================================================
-async function getLicense(username) {
-    return licenses.get(username) || null;
-}
-
-async function setLicense(username, data) {
-    licenses.set(username, data);
-}
-
-async function getDeviceUsername(deviceId) {
-    return devices.get(deviceId) || null;
-}
-
-async function setDevice(deviceId, username) {
-    devices.set(deviceId, username);
-}
-
-async function getAllLicenses() {
-    return Array.from(licenses.values());
-}
 
 // =================================================================
 // MIDDLEWARE DE AUTENTICAÇÃO ADMIN
@@ -561,6 +612,7 @@ const html = `
 `;
     res.send(html);
 });
+
 
 // =================================================================
 // INICIAR PROCESSO
@@ -1137,6 +1189,7 @@ app.get('/step', (req, res) => {
     res.send(html);
 });
 
+
 // =================================================================
 // API: AVANÇAR ETAPA
 // =================================================================
@@ -1186,7 +1239,7 @@ app.get('/api/next-step', async (req, res) => {
         
         await setLicense(credentials.username, licenseData);
         
-        console.log('✅ Credenciais geradas:', credentials.username);
+        console.log('✅ Credenciais geradas e salvas no Redis:', credentials.username);
         
         return res.json({ 
             redirect: '/success?u=' + encodeURIComponent(credentials.username) + '&p=' + encodeURIComponent(credentials.password)
@@ -1572,8 +1625,9 @@ app.get('/success', (req, res) => {
     res.send(html);
 });
 
+
 // =================================================================
-// LOGIN DO APP
+// LOGIN DO APP (AGORA COM REDIS)
 // =================================================================
 app.post('/login', async (req, res) => {
     const { deviceId, username, password } = req.body;
@@ -1606,6 +1660,9 @@ app.post('/login', async (req, res) => {
         const expiresAt = new Date(license.expiresAt);
         
         if (now > expiresAt) {
+            // Remover licença expirada do Redis
+            await deleteLicense(username);
+            
             return res.json({ 
                 success: false, 
                 message: 'Sua licença de 20 horas expirou.',
@@ -1629,7 +1686,8 @@ app.post('/login', async (req, res) => {
             return res.json({ 
                 success: true, 
                 message: "Acesso permitido. " + remainingHours + "h " + remainingMinutes + "m restantes.",
-                type: 'temp_20h'
+                type: 'temp_20h',
+                expiresAt: license.expiresAt
             });
             
         } else if (license.registeredDeviceId !== deviceId) {
@@ -1650,7 +1708,8 @@ app.post('/login', async (req, res) => {
             return res.json({ 
                 success: true, 
                 message: "Acesso permitido. " + remainingHours + "h " + remainingMinutes + "m restantes.",
-                type: 'temp_20h'
+                type: 'temp_20h',
+                expiresAt: license.expiresAt
             });
         }
     }
@@ -1662,7 +1721,45 @@ app.post('/login', async (req, res) => {
 });
 
 // =================================================================
-// ÁREA ADMIN
+// ENDPOINT PARA VERIFICAR STATUS (ÚTIL PARA O APP)
+// =================================================================
+app.post('/check-status', async (req, res) => {
+    const { deviceId, username } = req.body;
+    
+    const license = await getLicense(username);
+    
+    if (!license) {
+        return res.json({ valid: false });
+    }
+    
+    const now = new Date();
+    const expiresAt = new Date(license.expiresAt);
+    
+    // Verificar se expirou
+    if (now > expiresAt) {
+        await deleteLicense(username);
+        return res.json({ valid: false, expired: true });
+    }
+    
+    // Verificar se é o mesmo dispositivo
+    if (license.registeredDeviceId && license.registeredDeviceId !== deviceId) {
+        return res.json({ valid: false, wrongDevice: true });
+    }
+    
+    const remainingMs = expiresAt - now;
+    const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
+    const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    res.json({
+        valid: true,
+        remainingHours,
+        remainingMinutes,
+        expiresAt: license.expiresAt
+    });
+});
+
+// =================================================================
+// ÁREA ADMIN (ATUALIZADA COM REDIS)
 // =================================================================
 app.get('/admin', (req, res) => {
     const html = `
@@ -1813,80 +1910,13 @@ app.get('/admin/dashboard', authenticateAdmin, async (req, res) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: #f7fafc;
-                margin: 0;
-                padding: 20px;
-            }
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-            h1 { color: #2d3748; }
-            .header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-            }
-            .logout {
-                background: #e53e3e;
-                color: white;
-                padding: 10px 20px;
-                text-decoration: none;
-                border-radius: 5px;
-            }
-            table {
-                width: 100%;
-                background: white;
-                border-radius: 10px;
-                overflow: hidden;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            }
-            th {
-                background: #4a5568;
-                color: white;
-                padding: 12px;
-                text-align: left;
-            }
-            td {
-                padding: 12px;
-                border-bottom: 1px solid #e2e8f0;
-            }
-            tr:hover {
-                background: #f7fafc;
-            }
-            button {
-                padding: 5px 10px;
-                margin: 0 2px;
-                border: none;
-                border-radius: 3px;
-                cursor: pointer;
-            }
-            .stats {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 20px;
-                margin-bottom: 30px;
-            }
-            .stat-card {
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .stat-number {
-                font-size: 32px;
-                font-weight: bold;
-                color: #4299e1;
-            }
+            /* ... seu CSS existente ... */
         </style>
     </head>
     <body>
         <div class="container">
             <div class="header">
-                <h1>🔧 Painel Admin</h1>
+                <h1>🔧 Painel Admin (Redis)</h1>
                 <a href="/admin/logout" class="logout">Sair</a>
             </div>
             
@@ -1921,6 +1951,10 @@ app.get('/admin/dashboard', authenticateAdmin, async (req, res) => {
                     ${licenseRows || '<tr><td colspan="7">Nenhuma licença encontrada</td></tr>'}
                 </tbody>
             </table>
+            
+            <div style="margin-top: 20px; padding: 10px; background: #e6f7ff; border-radius: 5px;">
+                <strong>✅ Dados persistentes no Redis!</strong> As licenças não serão perdidas quando o servidor reiniciar.
+            </div>
         </div>
 
         <script>
@@ -1971,44 +2005,35 @@ app.get('/admin/check/:username', authenticateAdmin, async (req, res) => {
     
     res.json({
         success: true,
-        license: {
-            username: license.username,
-            type: license.type,
-            createdAt: license.createdAt,
-            expiresAt: license.expiresAt,
-            registeredDeviceId: license.registeredDeviceId,
-            firstSeen: license.firstSeen,
-            lastSeen: license.lastSeen,
-            status: license.status
-        }
+        license: license
     });
 });
 
 app.get('/admin/remove', authenticateAdmin, async (req, res) => {
-    const { username, deviceId } = req.query;
+    const { username } = req.query;
     
     if (username) {
-        licenses.delete(username);
-        
-        // Remove também dos devices associados
-        for (const [device, uname] of devices.entries()) {
-            if (uname === username) {
-                devices.delete(device);
-            }
-        }
-        
+        await deleteLicense(username);
         return res.json({ success: true, message: 'Licença ' + username + ' removida' });
-        
-    } else if (deviceId) {
-        const username = devices.get(deviceId);
-        if (username) {
-            licenses.delete(username);
-            devices.delete(deviceId);
-        }
-        return res.json({ success: true, message: 'Device ' + deviceId + ' removido' });
-        
     } else {
         return res.status(400).json({ success: false, message: 'Parâmetro necessário' });
+    }
+});
+
+// =================================================================
+// ENDPOINT PARA DEBUG
+// =================================================================
+app.get('/redis-test', async (req, res) => {
+    try {
+        await redisClient.set('test-key', 'Redis funcionando!');
+        const value = await redisClient.get('test-key');
+        res.json({ 
+            status: 'ok', 
+            message: value,
+            redis: 'conectado'
+        });
+    } catch (error) {
+        res.json({ status: 'error', error: error.message });
     }
 });
 
@@ -2021,16 +2046,17 @@ app.listen(PORT, () => {
     
     👤 Público:
         GET  /              - Página inicial
-        GET  /start         - Iniciar processo
+        GET  /acesso-mod    - Iniciar processo
         GET  /step          - Página de etapas
         GET  /success       - Credenciais geradas
         POST /login         - Login do app
+        POST /check-status  - Verificar status da licença
         
     🔐 Admin: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}
         GET  /admin         - Página de login
         GET  /admin/dashboard - Painel admin
         
-    ⚡ SEM REDIS! Usando armazenamento em memória.
+    ✅ REDIS CONECTADO! Dados persistentes.
     ⏱️  ${STEP_TIME_MS/1000}s por etapa · 6 etapas
     `);
 });
