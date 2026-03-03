@@ -190,84 +190,375 @@ function generateCredentials() {
 // ROTA PRINCIPAL
 // =================================================================
 app.get('/', (req, res) => {
-    const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Sistema de Acesso</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0;
-                padding: 20px;
-            }
-            .card {
-                background: white;
-                border-radius: 20px;
-                padding: 40px;
-                max-width: 400px;
-                width: 100%;
-                text-align: center;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            }
-            h1 { color: #333; margin-bottom: 20px; }
-            p { color: #666; margin-bottom: 30px; line-height: 1.6; }
-            .button {
-                background: #667eea;
-                color: white;
-                border: none;
-                padding: 15px 40px;
-                border-radius: 10px;
-                font-size: 18px;
-                cursor: pointer;
-                text-decoration: none;
-                display: inline-block;
-                transition: background 0.3s;
-            }
-            .button:hover {
-                background: #5a67d8;
-            }
-            .info {
-                margin-top: 30px;
-                padding: 15px;
-                background: #f7fafc;
-                border-radius: 10px;
-                font-size: 14px;
-                color: #718096;
-            }
-            .admin-link {
-                margin-top: 20px;
-                font-size: 12px;
-            }
-            .admin-link a {
-                color: #a0aec0;
-                text-decoration: none;
-            }
-        </style>
-    </head>
-    <body>
+const html = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sistema de Acesso</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(145deg, #E8F0FE 0%, #D9E9FF 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 16px;
+        }
+        
+        .main-container {
+            max-width: 480px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        
+        /* Card principal */
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 32px;
+            padding: 32px 24px;
+            width: 100%;
+            box-shadow: 0 25px 50px -12px rgba(0, 98, 204, 0.25),
+                        0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            text-align: center;
+        }
+        
+        /* Ícone animado */
+        .animated-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        h1 {
+            font-size: 36px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #0066FF 0%, #0099FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 16px;
+            letter-spacing: -0.5px;
+        }
+        
+        .description {
+            color: #4A5B6E;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 32px;
+            padding: 0 12px;
+        }
+        
+        /* Botão principal */
+        .button {
+            background: linear-gradient(145deg, #0066FF, #0099FF);
+            color: white;
+            border: none;
+            padding: 18px 40px;
+            border-radius: 40px;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 10px 20px -5px rgba(0, 102, 255, 0.4);
+            transition: all 0.3s;
+            margin-bottom: 24px;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px -5px rgba(0, 102, 255, 0.5);
+        }
+        
+        .button:active {
+            transform: translateY(0);
+        }
+        
+        /* Card de informações */
+        .info-card {
+            background: #F5F9FF;
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid #E2EEFF;
+        }
+        
+        .info-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1A2E45;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .info-badge {
+            background: #0066FF;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 40px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        /* Features em grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        
+        .feature {
+            background: white;
+            padding: 16px;
+            border-radius: 18px;
+            text-align: center;
+            border: 1px solid #E2EEFF;
+        }
+        
+        .feature-emoji {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        
+        .feature-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A2E45;
+            margin-bottom: 4px;
+        }
+        
+        .feature-desc {
+            font-size: 11px;
+            color: #4A5B6E;
+        }
+        
+        /* Timeline das etapas */
+        .timeline {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        
+        .timeline-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .timeline-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .timeline-number {
+            width: 36px;
+            height: 36px;
+            background: #F5F9FF;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #0066FF;
+            border: 1px solid #E2EEFF;
+        }
+        
+        .timeline-content {
+            flex: 1;
+            text-align: left;
+        }
+        
+        .timeline-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1A2E45;
+            margin-bottom: 2px;
+        }
+        
+        .timeline-sub {
+            font-size: 12px;
+            color: #4A5B6E;
+        }
+        
+        .timeline-duration {
+            background: #E8F0FE;
+            padding: 4px 10px;
+            border-radius: 40px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #0066FF;
+        }
+        
+        /* Footer e link admin */
+        .admin-section {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #E2EEFF;
+        }
+        
+        .admin-link {
+            color: #4A5B6E;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: #F5F9FF;
+            border-radius: 40px;
+            transition: all 0.2s;
+        }
+        
+        .admin-link:hover {
+            background: #E2EEFF;
+            color: #0066FF;
+        }
+        
+        .footer {
+            margin-top: 20px;
+            color: #4A5B6E;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
         <div class="card">
-            <h1>Gerar Acesso de 20 Horas</h1>
-            <p>Complete as etapas abaixo para gerar suas credenciais de acesso temporário.</p>
-            <a href="/start" class="button">Iniciar Processo</a>
-            <div class="info">
-                 6 etapas · 15 segundos cada<br>
-                Use as credenciais no app
+            <!-- Ícone animado -->
+            <div class="animated-icon"></div>
+            
+            <!-- Título -->
+            <h1>Gerar Acesso<br>de 20 Horas</h1>
+            
+            <!-- Descrição -->
+            <div class="description">
+                Complete as etapas de verificação para gerar suas credenciais de acesso temporário
             </div>
-            <div class="admin-link">
-                <a href="/admin">🔧 Área Admin</a>
+            
+            <!-- Botão iniciar -->
+            <a href="/acesso-mod" class="button">
+                Iniciar Processo
+            </a>
+            
+            <!-- Card informativo -->
+            <div class="info-card">
+                <div class="info-title">
+                    <span>ℹ️</span> Como funciona?
+                    <span class="info-badge">6 etapas</span>
+                </div>
+                
+                <!-- Grid de features -->
+                <div class="features-grid">
+                    <div class="feature">
+                        <div class="feature-emoji"></div>
+                        <div class="feature-title">15 segundos</div>
+                        <div class="feature-desc">por etapa</div>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-emoji"></div>
+                        <div class="feature-title">Seguro</div>
+                        <div class="feature-desc">verificação</div>
+                    </div>
+                </div>
+                
+                <!-- Timeline das etapas -->
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <div class="timeline-number">1</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">Verificação inicial</div>
+                            <div class="timeline-sub">Validação do dispositivo</div>
+                        </div>
+                        <div class="timeline-duration">15s</div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-number">2</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">Análise de segurança</div>
+                            <div class="timeline-sub">Checagem automática</div>
+                        </div>
+                        <div class="timeline-duration">15s</div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-number">3</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">Confirmação</div>
+                            <div class="timeline-sub">Validação final</div>
+                        </div>
+                        <div class="timeline-duration">15s</div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-number">4</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">Geração de token</div>
+                            <div class="timeline-sub">Criptografia</div>
+                        </div>
+                        <div class="timeline-duration">15s</div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-number">5</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">Vinculação</div>
+                            <div class="timeline-sub">Associação ao dispositivo</div>
+                        </div>
+                        <div class="timeline-duration">15s</div>
+                    </div>
+                    
+                    <div class="timeline-item">
+                        <div class="timeline-number">6</div>
+                        <div class="timeline-content">
+                            <div class="timeline-title">Liberação</div>
+                            <div class="timeline-sub">Acesso concedido</div>
+                        </div>
+                        <div class="timeline-duration">15s</div>
+                    </div>
+                </div>
+                
+                <!-- Total de tempo -->
+
+            </div>
+            
+            <!-- Área Admin -->
+            
+            
+            <!-- Footer -->
+            <div class="footer">
+                Sistema de verificação • 6 etapas de segurança
             </div>
         </div>
-    </body>
-    </html>
-    `;
+    </div>
+</body>
+</html>
+`;
     res.send(html);
 });
 
@@ -923,148 +1214,360 @@ app.get('/success', (req, res) => {
     }
     
     const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Acesso Gerado!</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0;
-                padding: 20px;
-            }
-            .card {
-                background: white;
-                border-radius: 20px;
-                padding: 40px;
-                max-width: 500px;
-                width: 100%;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            }
-            h1 { color: #333; margin-bottom: 10px; }
-            .subtitle { color: #718096; margin-bottom: 30px; }
-            .credentials-box {
-                background: #f7fafc;
-                border: 2px dashed #cbd5e0;
-                border-radius: 12px;
-                padding: 25px;
-                margin-bottom: 25px;
-            }
-            .credential-row {
-                margin-bottom: 20px;
-            }
-            .credential-row:last-child {
-                margin-bottom: 0;
-            }
-            .label {
-                font-size: 14px;
-                color: #4a5568;
-                margin-bottom: 5px;
-                font-weight: 600;
-            }
-            .value {
-                background: white;
-                border: 1px solid #e2e8f0;
-                padding: 12px 15px;
-                border-radius: 8px;
-                font-family: 'Courier New', monospace;
-                font-size: 16px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            .copy-btn {
-                background: #4299e1;
-                color: white;
-                border: none;
-                padding: 5px 12px;
-                border-radius: 6px;
-                cursor: pointer;
-                font-size: 13px;
-            }
-            .copy-btn:hover { background: #3182ce; }
-            .copy-btn.copied { background: #48bb78; }
-            .warning {
-                background: #fed7d7;
-                color: #c53030;
-                padding: 15px;
-                border-radius: 8px;
-                font-size: 14px;
-                text-align: center;
-            }
-            .button {
-                background: #667eea;
-                color: white;
-                border: none;
-                padding: 12px 30px;
-                border-radius: 8px;
-                cursor: pointer;
-                text-decoration: none;
-                display: inline-block;
-                margin-top: 20px;
-            }
-        </style>
-    </head>
-    <body>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Acesso Gerado!</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(145deg, #E8F0FE 0%, #D9E9FF 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 16px;
+        }
+        
+        .main-container {
+            max-width: 480px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        
+        /* Card principal */
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 32px;
+            padding: 32px 24px;
+            width: 100%;
+            box-shadow: 0 25px 50px -12px rgba(0, 98, 204, 0.25),
+                        0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+        }
+        
+        /* Header com ícone de sucesso */
+        .success-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        
+        .success-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(145deg, #48BB78, #38A169);
+            border-radius: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            box-shadow: 0 10px 20px -5px rgba(72, 187, 120, 0.3);
+        }
+        
+        .success-icon span {
+            font-size: 40px;
+            color: white;
+        }
+        
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            color: #1A2E45;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        
+        .subtitle {
+            color: #4A5B6E;
+            font-size: 16px;
+            font-weight: 500;
+            background: #F5F9FF;
+            padding: 8px 16px;
+            border-radius: 100px;
+            display: inline-block;
+            border: 1px solid #E2EEFF;
+        }
+        
+        /* Container das credenciais */
+        .credentials-container {
+            background: #F5F9FF;
+            border-radius: 24px;
+            padding: 24px;
+            margin: 24px 0;
+            border: 2px dashed #0066FF;
+            position: relative;
+        }
+        
+        .credentials-container::before {
+            content: "🔐";
+            position: absolute;
+            top: -12px;
+            left: 20px;
+            background: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            border: 1px solid #0066FF;
+            color: #0066FF;
+            font-weight: 600;
+        }
+        
+        .credential-row {
+            margin-bottom: 20px;
+        }
+        
+        .credential-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #0066FF;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .value {
+            background: white;
+            border: 1px solid #E2EEFF;
+            padding: 16px 20px;
+            border-radius: 18px;
+            font-family: 'SF Mono', 'Courier New', monospace;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0, 102, 255, 0.05);
+        }
+        
+        .copy-btn {
+            background: linear-gradient(145deg, #E8F0FE, #D9E9FF);
+            color: #0066FF;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 40px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+            border: 1px solid rgba(0, 102, 255, 0.2);
+        }
+        
+        .copy-btn:hover {
+            background: linear-gradient(145deg, #0066FF, #0099FF);
+            color: white;
+            transform: scale(1.05);
+        }
+        
+        .copy-btn.copied {
+            background: linear-gradient(145deg, #48BB78, #38A169);
+            color: white;
+            border: none;
+        }
+        
+        /* Card de aviso */
+        .warning-card {
+            background: #FFF4E8;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 24px;
+            border-left: 4px solid #FF9800;
+        }
+        
+        .warning-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
+            color: #C75E00;
+            margin-bottom: 8px;
+        }
+        
+        .warning-text {
+            color: #4A5B6E;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        /* Informações adicionais */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        
+        .info-item {
+            background: #F5F9FF;
+            padding: 16px;
+            border-radius: 18px;
+            text-align: center;
+        }
+        
+        .info-item .emoji {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+        
+        .info-item .title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A2E45;
+            margin-bottom: 2px;
+        }
+        
+        .info-item .desc {
+            font-size: 11px;
+            color: #4A5B6E;
+        }
+        
+        /* Botão de voltar */
+        .button {
+            background: linear-gradient(145deg, #0066FF, #0099FF);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 10px 20px -5px rgba(0, 102, 255, 0.4);
+            transition: all 0.3s;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px -5px rgba(0, 102, 255, 0.5);
+        }
+        
+        .button:active {
+            transform: translateY(0);
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: #4A5B6E;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
         <div class="card">
-            <h1>Acesso Gerado!</h1>
-            <div class="subtitle">Válido por 20 horas</div>
+            <!-- Header de sucesso -->
+            <div class="success-header">
+                <div class="success-icon">
+                    <span></span>
+                </div>
+                <h1>Acesso Gerado!</h1>
+                <div class="subtitle">⏱️ Válido por 20 horas</div>
+            </div>
             
-            <div class="credentials-box">
+            <!-- Credenciais -->
+            <div class="credentials-container">
                 <div class="credential-row">
-                    <div class="label">USUÁRIO</div>
+                    <div class="label">
+                        <span></span> USUÁRIO
+                    </div>
                     <div class="value" id="username">${username}</div>
                 </div>
                 
                 <div class="credential-row">
-                    <div class="label">SENHA</div>
+                    <div class="label">
+                        <span></span> SENHA
+                    </div>
                     <div class="value" id="password">${password}</div>
                 </div>
             </div>
             
-            <div class="warning">
-                ⚠️ Use no app. A conta será vinculada ao primeiro dispositivo.
+            <!-- Aviso importante -->
+            <div class="warning-card">
+                <div class="warning-title">
+                    <span></span> Atenção!
+                </div>
+                <div class="warning-text">
+                    Esta conta será vinculada ao primeiro dispositivo que fizer login. 
+                    Não compartilhe suas credenciais com ninguém.
+                </div>
             </div>
             
-            <a href="/" class="button">Voltar ao Início</a>
-        </div>
-
-        <script>
-            function copyToClipboard(elementId) {
-                const element = document.getElementById(elementId);
-                const text = element.innerText.replace('Copiar', '').trim();
-                
-                navigator.clipboard.writeText(text).then(() => {
-                    const btn = element.querySelector('.copy-btn');
-                    btn.textContent = 'Copiado!';
-                    btn.classList.add('copied');
-                    
-                    setTimeout(() => {
-                        btn.textContent = 'Copiar';
-                        btn.classList.remove('copied');
-                    }, 2000);
-                });
-            }
+            <!-- Grid informativo -->
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="emoji"></div>
+                    <div class="title">Protegido</div>
+                    <div class="desc">Criptografia avançada</div>
+                </div>
+                <div class="info-item">
+                    <div class="emoji"></div>
+                    <div class="title">Rápido</div>
+                    <div class="desc">Acesso imediato</div>
+                </div>
+            </div>
             
-            ['username', 'password'].forEach(id => {
-                const element = document.getElementById(id);
-                const btn = document.createElement('button');
-                btn.className = 'copy-btn';
-                btn.textContent = 'Copiar';
-                btn.onclick = () => copyToClipboard(id);
-                element.appendChild(btn);
+            <!-- Botão voltar -->
+            <a href="/" class="button">← Voltar ao Início</a>
+            
+            <!-- Footer -->
+            <div class="footer">
+                Guarde suas credenciais em local seguro
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const valueDiv = element;
+            const text = valueDiv.innerText.replace('Copiar', '').replace('Copiado!', '').trim();
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = element.querySelector('.copy-btn');
+                const originalText = btn.textContent;
+                
+                btn.textContent = 'Copiado!';
+                btn.classList.add('copied');
+                
+                setTimeout(() => {
+                    btn.textContent = 'Copiar';
+                    btn.classList.remove('copied');
+                }, 2000);
             });
-        </script>
-    </body>
-    </html>
-    `;
+        }
+        
+        // Adiciona botões de cópia
+        ['username', 'password'].forEach(id => {
+            const element = document.getElementById(id);
+            const btn = document.createElement('button');
+            btn.className = 'copy-btn';
+            btn.textContent = 'Copiar';
+            btn.onclick = () => copyToClipboard(id);
+            element.appendChild(btn);
+        });
+    </script>
+</body>
+</html>
+`;
     
     res.send(html);
 });
