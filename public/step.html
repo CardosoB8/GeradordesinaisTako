@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Etapa ${payload.step} de 6</title>
+    <title>Etapa <span id="stepDisplay">1</span> de 6</title>
     <meta charset="UTF-8">
     <script src="https://quge5.com/88/tag.min.js" data-zone="216045" async data-cfasync="false"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <style>
+        /* SEU CSS EXATAMENTE IGUAL */
         * {
             margin: 0;
             padding: 0;
@@ -24,14 +25,12 @@
             padding: 16px;
         }
         
-        /* Container principal */
         .main-container {
             max-width: 480px;
             width: 100%;
             margin: 0 auto;
         }
         
-        /* Card principal */
         .card {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
@@ -43,18 +42,6 @@
                         0 0 0 1px rgba(255, 255, 255, 0.5) inset;
             margin-bottom: 20px;
             border: 1px solid rgba(255, 255, 255, 0.8);
-        }
-        
-        /* Header com gradiente */
-        .header-gradient {
-            background: linear-gradient(135deg, #0066FF 0%, #0099FF 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-size: 32px;
-            font-weight: 800;
-            margin-bottom: 8px;
-            letter-spacing: -0.5px;
         }
         
         h1 {
@@ -88,7 +75,6 @@
             border: 1px solid #E2EEFF;
         }
         
-        /* Timer container moderno */
         .timer-container {
             background: linear-gradient(145deg, #F0F7FF, #E5F0FF);
             border-radius: 28px;
@@ -117,7 +103,6 @@
             letter-spacing: 0.5px;
         }
         
-        /* Progress bar estilosa */
         .progress-section {
             margin-bottom: 24px;
         }
@@ -161,7 +146,6 @@
             box-shadow: 0 0 10px #0099FF;
         }
         
-        /* Botão moderno */
         .button {
             width: 100%;
             padding: 18px 24px;
@@ -193,7 +177,6 @@
             transform: scale(0.98);
         }
         
-        /* Mensagem de status */
         .message {
             background: #E8F0FE;
             border-left: 4px solid #0066FF;
@@ -206,7 +189,6 @@
             box-shadow: 0 4px 12px rgba(0, 102, 255, 0.1);
         }
         
-        /* Espaços de anúncios nativos */
         .ad-container {
             background: white;
             border-radius: 24px;
@@ -269,7 +251,6 @@
             margin-top: 8px;
         }
         
-        /* Conteúdo informativo */
         .info-card {
             background: white;
             border-radius: 24px;
@@ -336,7 +317,6 @@
             color: #4A5B6E;
         }
         
-        /* Dicas rápidas */
         .tips-container {
             background: #F5F9FF;
             border-radius: 20px;
@@ -374,7 +354,6 @@
             flex: 1;
         }
         
-        /* Footer */
         .footer {
             text-align: center;
             color: #4A5B6E;
@@ -388,20 +367,20 @@
         
         <!-- Card principal do step -->
         <div class="card">
-            <span class="step-badge">Etapa ${payload.step} de 6</span>
+            <span class="step-badge" id="stepBadge">Etapa 1 de 6</span>
             <h1>Verificação<br>para acesso Super Movitel Mod</h1>
             
             <div class="step-indicator">
                 Complete todas as 6 etapas para liberar seu acesso
             </div>
             
-            <!-- Timer com design melhorado -->
+            <!-- Timer -->
             <div class="timer-container">
                 <div class="timer" id="timer">15</div>
                 <div class="timer-label">segundos restantes para avançar</div>
             </div>
             
-            <!-- Barra de progresso com percentual -->
+            <!-- Barra de progresso -->
             <div class="progress-section">
                 <div class="progress-header">
                     <span class="progress-text">Progresso da etapa</span>
@@ -420,7 +399,7 @@
                 <span id="btnText">Aguardando tempo...</span>
             </button>
             
-            <!-- Dicas rápidas durante a espera -->
+            <!-- Dicas rápidas -->
             <div class="tips-container">
                 <div class="tip">
                     <div class="tip-number">①</div>
@@ -439,10 +418,10 @@
         
         <!-- Espaço para anúncio nativo 1 -->
         <div class="ad-container">
-            
+            <!-- Depois você preenche -->
         </div>
         
-        <!-- Card informativo com conteúdo relevante -->
+        <!-- Card informativo -->
         <div class="info-card">
             <div class="info-title">
                 <span></span> Por que isso é importante?
@@ -451,22 +430,29 @@
                 A verificação em múltiplas etapas garante que apenas você tenha acesso à sua conta. 
                 Este processo adicional de segurança impede acessos não autorizados e mantém seus 
                 dados protegidos contra invasores.
-             </div>
-
+            </div>
         </div>
         
         <!-- Espaço para anúncio nativo 2 -->
         <div class="ad-container">
-
+            <!-- Depois você preenche -->
         </div>
         
-        <!-- Footer com informações adicionais -->
+        <!-- Footer -->
         <div class="footer">
             © 2026 · Mrdoso-web
         </div>
     </div>
 
     <script>
+        // Pegar parâmetros da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const currentStep = parseInt(urlParams.get('step')) || 1;
+        
+        // Atualizar o texto da etapa
+        document.getElementById('stepBadge').innerHTML = 'Etapa ' + currentStep + ' de 6';
+        
         let timeLeft = 15;
         const timerEl = document.getElementById('timer');
         const nextBtn = document.getElementById('nextBtn');
@@ -474,20 +460,16 @@
         const messageEl = document.getElementById('message');
         const progressEl = document.getElementById('progress');
         const progressPercent = document.getElementById('progressPercent');
-        const token = '${token}';
-        const currentStep = ${payload.step};
         
         // Atualiza a cada segundo
         const interval = setInterval(() => {
             timeLeft--;
             timerEl.textContent = timeLeft;
             
-            // Calcula percentual
             const percent = ((15 - timeLeft) / 15 * 100);
             progressEl.style.width = percent + '%';
             progressPercent.textContent = Math.round(percent) + '%';
             
-            // Muda cor do timer quando está acabando
             if (timeLeft <= 5) {
                 timerEl.style.color = '#FF6B4A';
             } else {
@@ -502,8 +484,6 @@
                 
                 nextBtn.disabled = false;
                 btnText.textContent = "Avançar para próxima etapa →";
-                
-                // Feedback visual
                 nextBtn.style.background = 'linear-gradient(145deg, #0066FF, #0099FF)';
             } else {
                 btnText.textContent = "Aguarde " + timeLeft + "s";
@@ -518,7 +498,6 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.redirect) {
-                        // Animação de saída
                         document.querySelector('.main-container').style.opacity = '0';
                         setTimeout(() => {
                             window.location.href = data.redirect;
