@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Etapa ${payload.step} de 6</title>
+    <meta charset="UTF-8">
+    <script src="https://quge5.com/88/tag.min.js" data-zone="216045" async data-cfasync="false"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(145deg, #E8F0FE 0%, #D9E9FF 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 16px;
+        }
+        
+        /* Container principal */
+        .main-container {
+            max-width: 480px;
+            width: 100%;
+            margin: 0 auto;
+        }
+        
+        /* Card principal */
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 32px;
+            padding: 28px 24px;
+            width: 100%;
+            box-shadow: 0 25px 50px -12px rgba(0, 98, 204, 0.25),
+                        0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+        }
+        
+        /* Header com gradiente */
+        .header-gradient {
+            background: linear-gradient(135deg, #0066FF 0%, #0099FF 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+        
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            color: #1A2E45;
+            margin-bottom: 4px;
+            line-height: 1.2;
+        }
+        
+        .step-badge {
+            display: inline-block;
+            background: #E8F0FE;
+            padding: 6px 16px;
+            border-radius: 100px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #0066FF;
+            margin-bottom: 20px;
+            border: 1px solid rgba(0, 102, 255, 0.2);
+        }
+        
+        .step-indicator {
+            color: #4A5B6E;
+            font-size: 15px;
+            margin-bottom: 24px;
+            font-weight: 500;
+            background: #F5F9FF;
+            padding: 12px 16px;
+            border-radius: 16px;
+            border: 1px solid #E2EEFF;
+        }
+        
+        /* Timer container moderno */
+        .timer-container {
+            background: linear-gradient(145deg, #F0F7FF, #E5F0FF);
+            border-radius: 28px;
+            padding: 28px 20px;
+            margin-bottom: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 10px 20px -10px rgba(0, 102, 255, 0.2);
+        }
+        
+        .timer {
+            font-size: 64px;
+            font-weight: 800;
+            color: #0066FF;
+            text-align: center;
+            font-family: 'SF Mono', 'Courier New', monospace;
+            line-height: 1;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 10px rgba(0, 102, 255, 0.2);
+        }
+        
+        .timer-label {
+            text-align: center;
+            color: #4A5B6E;
+            font-size: 15px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Progress bar estilosa */
+        .progress-section {
+            margin-bottom: 24px;
+        }
+        
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        
+        .progress-text {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1A2E45;
+        }
+        
+        .progress-percent {
+            font-size: 14px;
+            font-weight: 700;
+            color: #0066FF;
+            background: #E8F0FE;
+            padding: 4px 8px;
+            border-radius: 20px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: #E2EEFF;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 102, 255, 0.1) inset;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0066FF, #0099FF);
+            width: 0%;
+            transition: width 0.1s linear;
+            border-radius: 20px;
+            box-shadow: 0 0 10px #0099FF;
+        }
+        
+        /* Botão moderno */
+        .button {
+            width: 100%;
+            padding: 18px 24px;
+            border: none;
+            border-radius: 24px;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(145deg, #E2EEFF, #D1E3FF);
+            color: #4A5B6E;
+            box-shadow: 0 4px 12px rgba(0, 102, 255, 0.1);
+        }
+        
+        .button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .button:not(:disabled) {
+            background: linear-gradient(145deg, #0066FF, #0099FF);
+            color: white;
+            box-shadow: 0 10px 20px -5px rgba(0, 102, 255, 0.4);
+        }
+        
+        .button:not(:disabled):active {
+            transform: scale(0.98);
+        }
+        
+        /* Mensagem de status */
+        .message {
+            background: #E8F0FE;
+            border-left: 4px solid #0066FF;
+            border-radius: 16px;
+            padding: 16px 20px;
+            color: #1A2E45;
+            margin: 20px 0;
+            font-weight: 500;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0, 102, 255, 0.1);
+        }
+        
+        /* Espaços de anúncios nativos */
+        .ad-container {
+            background: white;
+            border-radius: 24px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #E2EEFF;
+            box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .ad-badge {
+            display: inline-block;
+            background: #FFE8E0;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #FF6B4A;
+            margin-bottom: 12px;
+        }
+        
+        .ad-content {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .ad-icon {
+            width: 56px;
+            height: 56px;
+            background: linear-gradient(145deg, #0066FF, #0099FF);
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 28px;
+        }
+        
+        .ad-text h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1A2E45;
+            margin-bottom: 4px;
+        }
+        
+        .ad-text p {
+            font-size: 14px;
+            color: #4A5B6E;
+            line-height: 1.4;
+        }
+        
+        .ad-cta {
+            color: #0066FF;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 8px;
+        }
+        
+        /* Conteúdo informativo */
+        .info-card {
+            background: white;
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid #E2EEFF;
+        }
+        
+        .info-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1A2E45;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .info-title span {
+            background: #0066FF;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+        
+        .info-text {
+            color: #4A5B6E;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+        
+        .info-features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        .feature-item {
+            background: #F5F9FF;
+            padding: 12px;
+            border-radius: 16px;
+            text-align: center;
+        }
+        
+        .feature-item .emoji {
+            font-size: 24px;
+            margin-bottom: 4px;
+        }
+        
+        .feature-item .text {
+            font-size: 12px;
+            font-weight: 600;
+            color: #1A2E45;
+        }
+        
+        .feature-item .subtext {
+            font-size: 10px;
+            color: #4A5B6E;
+        }
+        
+        /* Dicas rápidas */
+        .tips-container {
+            background: #F5F9FF;
+            border-radius: 20px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .tip {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .tip:last-child {
+            margin-bottom: 0;
+        }
+        
+        .tip-number {
+            width: 32px;
+            height: 32px;
+            background: white;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #0066FF;
+            border: 1px solid #E2EEFF;
+        }
+        
+        .tip-text {
+            font-size: 14px;
+            color: #1A2E45;
+            flex: 1;
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            color: #4A5B6E;
+            font-size: 12px;
+            padding: 20px 0 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        
+        <!-- Card principal do step -->
+        <div class="card">
+            <span class="step-badge">Etapa ${payload.step} de 6</span>
+            <h1>Verificação<br>para acesso Super Movitel Mod</h1>
+            
+            <div class="step-indicator">
+                Complete todas as 6 etapas para liberar seu acesso
+            </div>
+            
+            <!-- Timer com design melhorado -->
+            <div class="timer-container">
+                <div class="timer" id="timer">15</div>
+                <div class="timer-label">segundos restantes para avançar</div>
+            </div>
+            
+            <!-- Barra de progresso com percentual -->
+            <div class="progress-section">
+                <div class="progress-header">
+                    <span class="progress-text">Progresso da etapa</span>
+                    <span class="progress-percent" id="progressPercent">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress"></div>
+                </div>
+            </div>
+            
+            <!-- Mensagem de status -->
+            <div class="message" id="message"></div>
+            
+            <!-- Botão de avançar -->
+            <button class="button" id="nextBtn" disabled>
+                <span id="btnText">Aguardando tempo...</span>
+            </button>
+            
+            <!-- Dicas rápidas durante a espera -->
+            <div class="tips-container">
+                <div class="tip">
+                    <div class="tip-number">①</div>
+                    <div class="tip-text">Nunca compartilhe suas credenciais</div>
+                </div>
+                <div class="tip">
+                    <div class="tip-number">②</div>
+                    <div class="tip-text">Use no seu dispositivo</div>
+                </div>
+                <div class="tip">
+                    <div class="tip-number">③</div>
+                    <div class="tip-text">Cada acesso só funciona num único dispositivo</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Espaço para anúncio nativo 1 -->
+        <div class="ad-container">
+            
+        </div>
+        
+        <!-- Card informativo com conteúdo relevante -->
+        <div class="info-card">
+            <div class="info-title">
+                <span></span> Por que isso é importante?
+            </div>
+            <div class="info-text">
+                A verificação em múltiplas etapas garante que apenas você tenha acesso à sua conta. 
+                Este processo adicional de segurança impede acessos não autorizados e mantém seus 
+                dados protegidos contra invasores.
+             </div>
+
+        </div>
+        
+        <!-- Espaço para anúncio nativo 2 -->
+        <div class="ad-container">
+
+        </div>
+        
+        <!-- Footer com informações adicionais -->
+        <div class="footer">
+            © 2026 · Mrdoso-web
+        </div>
+    </div>
+
+    <script>
+        let timeLeft = 15;
+        const timerEl = document.getElementById('timer');
+        const nextBtn = document.getElementById('nextBtn');
+        const btnText = document.getElementById('btnText');
+        const messageEl = document.getElementById('message');
+        const progressEl = document.getElementById('progress');
+        const progressPercent = document.getElementById('progressPercent');
+        const token = '${token}';
+        const currentStep = ${payload.step};
+        
+        // Atualiza a cada segundo
+        const interval = setInterval(() => {
+            timeLeft--;
+            timerEl.textContent = timeLeft;
+            
+            // Calcula percentual
+            const percent = ((15 - timeLeft) / 15 * 100);
+            progressEl.style.width = percent + '%';
+            progressPercent.textContent = Math.round(percent) + '%';
+            
+            // Muda cor do timer quando está acabando
+            if (timeLeft <= 5) {
+                timerEl.style.color = '#FF6B4A';
+            } else {
+                timerEl.style.color = '#0066FF';
+            }
+            
+            if (timeLeft <= 0) {
+                clearInterval(interval);
+                timerEl.textContent = "0";
+                progressEl.style.width = '100%';
+                progressPercent.textContent = '100%';
+                
+                nextBtn.disabled = false;
+                btnText.textContent = "Avançar para próxima etapa →";
+                
+                // Feedback visual
+                nextBtn.style.background = 'linear-gradient(145deg, #0066FF, #0099FF)';
+            } else {
+                btnText.textContent = "Aguarde " + timeLeft + "s";
+            }
+        }, 1000);
+        
+        function nextStep() {
+            nextBtn.disabled = true;
+            btnText.textContent = "Processando...";
+            
+            fetch('/api/next-step?token=' + token + '&currentStep=' + currentStep)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.redirect) {
+                        // Animação de saída
+                        document.querySelector('.main-container').style.opacity = '0';
+                        setTimeout(() => {
+                            window.location.href = data.redirect;
+                        }, 300);
+                    } else if (data.error) {
+                        messageEl.style.display = 'block';
+                        messageEl.textContent = '⚠️ ' + data.error;
+                        btnText.textContent = "Tentar novamente";
+                        nextBtn.disabled = false;
+                        
+                        setTimeout(() => {
+                            messageEl.style.display = 'none';
+                        }, 3000);
+                    }
+                })
+                .catch(() => {
+                    messageEl.style.display = 'block';
+                    messageEl.textContent = '⚠️ Erro de conexão. Tente novamente.';
+                    btnText.textContent = "Tentar novamente";
+                    nextBtn.disabled = false;
+                });
+        }
+        
+        nextBtn.onclick = nextStep;
+    </script>
+</body>
+</html>
