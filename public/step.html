@@ -4,6 +4,7 @@
     <title>Etapa <span id="stepDisplay">1</span> de 6</title>
     <meta charset="UTF-8">
     <script src="https://quge5.com/88/tag.min.js" data-zone="216045" async data-cfasync="false"></script>
+    <meta name="juicyads-site-verification" content="674d588fb4d1b6def487ae6f77fefa14">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <style>
         /* SEU CSS EXATAMENTE IGUAL */
@@ -465,85 +466,134 @@
         </div>
     </div>
 
-    <script>
-        // Pegar parâmetros da URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const token = urlParams.get('token');
-        const currentStep = parseInt(urlParams.get('step')) || 1;
+<script>
+// Pegar parâmetros da URL
+const urlParams = new URLSearchParams(window.location.search);
+const token = urlParams.get('token');
+const currentStep = parseInt(urlParams.get('step')) || 1;
+
+// 🎯 SMARTLINKS DIFERENTES PARA CADA ETAPA
+const smartlinks = {
+    1: 'https://omg10.com/4/10420694',
+    2: 'https://www.effectivegatecpm.com/ki4e3ftt5h?key=99415bf2c750643bbcc7c1380848fee9',
+    3: 'https://pertlouv.com/pZ0Ob1Vxs8U=?',
+    4: 'https://www.effectivegatecpm.com/tbbcg5bx?key=3bb4fddb46aa3dc5d9b4a69eb76789a3',
+    5: 'https://omg10.com/4/10420694',
+    6: 'https://smartlink-etapa6.com'
+};
+
+// 👇 VARIÁVEL PARA CONTROLAR SE JÁ ABRIU SMARTLINK NESTA SESSÃO
+let smartlinkAbertoNestaEtapa = false;
+
+// Atualizar o texto da etapa
+document.getElementById('stepBadge').innerHTML = 'Etapa ' + currentStep + ' de 6';
+
+let timeLeft = 15;
+const timerEl = document.getElementById('timer');
+const nextBtn = document.getElementById('nextBtn');
+const btnText = document.getElementById('btnText');
+const messageEl = document.getElementById('message');
+const progressEl = document.getElementById('progress');
+const progressPercent = document.getElementById('progressPercent');
+
+// TIMER
+const interval = setInterval(() => {
+    timeLeft--;
+    timerEl.textContent = timeLeft;
+    
+    const percent = ((15 - timeLeft) / 15 * 100);
+    progressEl.style.width = percent + '%';
+    progressPercent.textContent = Math.round(percent) + '%';
+    
+    if (timeLeft <= 5) {
+        timerEl.style.color = '#FF6B4A';
+    } else {
+        timerEl.style.color = '#0066FF';
+    }
+    
+    if (timeLeft <= 0) {
+        clearInterval(interval);
+        timerEl.textContent = "0";
+        progressEl.style.width = '100%';
+        progressPercent.textContent = '100%';
         
-        // Atualizar o texto da etapa
-        document.getElementById('stepBadge').innerHTML = 'Etapa ' + currentStep + ' de 6';
+        nextBtn.disabled = false;
+        btnText.textContent = "Avançar para próxima etapa →";
+        nextBtn.style.background = 'linear-gradient(145deg, #0066FF, #0099FF)';
+    } else {
+        btnText.textContent = "Aguarde " + timeLeft + "s";
+    }
+}, 1000);
+
+// FUNÇÃO PRINCIPAL
+function nextStep() {
+    nextBtn.disabled = true;
+    btnText.textContent = "Processando...";
+    
+    if (!smartlinkAbertoNestaEtapa) {
+        // 🟡 PRIMEIRO CLIQUE NESTA ETAPA: Abrir smartlink
         
-        let timeLeft = 15;
-        const timerEl = document.getElementById('timer');
-        const nextBtn = document.getElementById('nextBtn');
-        const btnText = document.getElementById('btnText');
-        const messageEl = document.getElementById('message');
-        const progressEl = document.getElementById('progress');
-        const progressPercent = document.getElementById('progressPercent');
+        // Mostrar mensagem
+        messageEl.style.display = 'block';
+        messageEl.innerHTML = '🔗 Abrindo link da etapa ' + currentStep + '... Volte após completar!';
+        messageEl.style.background = '#FFF3E0';
+        messageEl.style.borderLeftColor = '#FF9900';
         
-        // Atualiza a cada segundo
-        const interval = setInterval(() => {
-            timeLeft--;
-            timerEl.textContent = timeLeft;
-            
-            const percent = ((15 - timeLeft) / 15 * 100);
-            progressEl.style.width = percent + '%';
-            progressPercent.textContent = Math.round(percent) + '%';
-            
-            if (timeLeft <= 5) {
-                timerEl.style.color = '#FF6B4A';
-            } else {
-                timerEl.style.color = '#0066FF';
-            }
-            
-            if (timeLeft <= 0) {
-                clearInterval(interval);
-                timerEl.textContent = "0";
-                progressEl.style.width = '100%';
-                progressPercent.textContent = '100%';
-                
-                nextBtn.disabled = false;
-                btnText.textContent = "Avançar para próxima etapa →";
-                nextBtn.style.background = 'linear-gradient(145deg, #0066FF, #0099FF)';
-            } else {
-                btnText.textContent = "Aguarde " + timeLeft + "s";
-            }
-        }, 1000);
+        // 🔗 Abrir o smartlink específico DESTA etapa
+        window.open(smartlinks[currentStep], '_blank');
         
-        function nextStep() {
-            nextBtn.disabled = true;
-            btnText.textContent = "Processando...";
-            
-            fetch('/api/next-step?token=' + token + '&currentStep=' + currentStep)
-                .then(res => res.json())
-                .then(data => {
-                    if (data.redirect) {
-                        document.querySelector('.main-container').style.opacity = '0';
-                        setTimeout(() => {
-                            window.location.href = data.redirect;
-                        }, 300);
-                    } else if (data.error) {
-                        messageEl.style.display = 'block';
-                        messageEl.textContent = '⚠️ ' + data.error;
-                        btnText.textContent = "Tentar novamente";
-                        nextBtn.disabled = false;
-                        
-                        setTimeout(() => {
-                            messageEl.style.display = 'none';
-                        }, 3000);
-                    }
-                })
-                .catch(() => {
+        // Marcar que já abriu o smartlink nesta etapa
+        smartlinkAbertoNestaEtapa = true;
+        
+        // Reativar botão para quando voltar
+        setTimeout(() => {
+            nextBtn.disabled = false;
+            btnText.textContent = "✅ Já completei etapa " + currentStep + ", avançar →";
+            messageEl.style.display = 'none';
+        }, 2000);
+    } 
+    else {
+        // 🟢 SEGUNDO CLIQUE: Já abriu smartlink, avançar para próxima etapa
+        
+        // Fazer fetch para avançar (igual ao teu código original)
+        fetch('/api/next-step?token=' + token + '&currentStep=' + currentStep)
+            .then(res => res.json())
+            .then(data => {
+                if (data.redirect) {
+                    document.querySelector('.main-container').style.opacity = '0';
+                    setTimeout(() => {
+                        window.location.href = data.redirect;
+                    }, 300);
+                } else if (data.error) {
                     messageEl.style.display = 'block';
-                    messageEl.textContent = '⚠️ Erro de conexão. Tente novamente.';
+                    messageEl.textContent = '⚠️ ' + data.error;
                     btnText.textContent = "Tentar novamente";
                     nextBtn.disabled = false;
-                });
-        }
-        
-        nextBtn.onclick = nextStep;
-    </script>
+                    
+                    setTimeout(() => {
+                        messageEl.style.display = 'none';
+                    }, 3000);
+                }
+            })
+            .catch(() => {
+                messageEl.style.display = 'block';
+                messageEl.textContent = '⚠️ Erro de conexão. Tente novamente.';
+                btnText.textContent = "Tentar novamente";
+                nextBtn.disabled = false;
+            });
+    }
+}
+
+nextBtn.onclick = nextStep;
+
+// Mostrar hint
+const smartlinkHint = document.createElement('div');
+smartlinkHint.style.marginTop = '10px';
+smartlinkHint.style.fontSize = '12px';
+smartlinkHint.style.color = '#666';
+smartlinkHint.innerHTML = '🔐 Etapa ' + currentStep + ' requer verificação externa (primeiro clique abre link)';
+document.querySelector('.timer-container').appendChild(smartlinkHint);
+</script>
     <script src="https://pl28837246.effectivegatecpm.com/9c/eb/4c/9ceb4cfcc9ccbf6f92317b51f4f3617e.js"></script>
 </body>
 </html>
