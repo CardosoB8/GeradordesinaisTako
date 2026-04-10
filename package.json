@@ -1,25 +1,16 @@
 {
-  "name": "sistema-licenca-node-redis",
-  "version": "1.0.0",
-  "description": "Servidor de licenciamento com Express e persistência via redis.",
+  "name": "mr-doso-redis",
+  "version": "3.0.0",
+  "description": "Sistema de encurtamento com Redis - Sem tokens na URL",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon index.js"
   },
-  "keywords": [
-    "express",
-    "redis",
-    "licensing",
-    "vercel"
-  ],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
-    "redis": "^4.6.10",
-    "helmet": "^7.1.0",
+    "redis": "^4.6.7",
+    "helmet": "^7.0.0",
     "express-rate-limit": "^6.10.0",
     "cors": "^2.8.5"
   },

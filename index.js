@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const redis = require('redis');
+const cors = require('cors');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,16 +12,39 @@ const PORT = process.env.PORT || 3000;
 // =================================================================
 // CONFIGURAÇÕES DE SEGURANÇA
 // =================================================================
-app.set('trust proxy', 1);
+// server.js
+const ALLOWED_AD_NETWORKS = [
+    'https://quge5.com',                          // Monetag
+    'https://pl27551656.revenuecpmgate.com',     // Adsterra
+    'https://omg10.com',                          // CPA Links
+    'https://www.effectivegatecpm.com',          // CPA Links
+    // Adicione mais quando precisar:
+    // 'https://pagead2.googlesyndication.com',   // Google Adsense
+    // 'https://adservice.google.com',            // Google Ads
+];
+
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"]
+            scriptSrc: [
+                "'self'", 
+                "'unsafe-inline'",  // Permite scripts inline que VOCÊ gera
+                ...ALLOWED_AD_NETWORKS
+            ],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'"],
+            frameSrc: ["'self'", "https:"],  // Para iframes de anúncios
         }
     }
 }));
+
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Rate limit
 const limiter = rateLimit({
@@ -30,1488 +54,1052 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
 // =================================================================
-// CONFIGURAÇÃO DO REDIS (PERSISTENTE!)
+// CONFIGURAÇÃO DO REDIS (O SEU, QUE JÁ FUNCIONA!)
 // =================================================================
 const redisClient = redis.createClient({
     url: 'redis://default:JyefUsxHJljfdvs8HACumEyLE7XNgLvG@redis-19242.c266.us-east-1-3.ec2.cloud.redislabs.com:19242'
 });
 
 redisClient.on('error', (err) => console.log('Redis Client Error', err));
-redisClient.on('connect', () => console.log('✅ Conectado ao Redis!'));
+redisClient.on('connect', () => console.log('✅ Conectado ao Redis Cloud!'));
 
-// Conectar ao Redis
 (async () => {
     await redisClient.connect();
+    console.log('🚀 Redis pronto para uso!');
 })();
 
 // =================================================================
-// ARMAZENAMENTO EM REDIS (AGORA PERSISTENTE!)
+// CONFIGURAÇÕES DO SISTEMA DE LINKS
 // =================================================================
-const usedTokens = new Map();    // tokens usados (podem ficar em memória)
+const SESSION_EXPIRATION = 24 * 60 * 60; // 24 horas em segundos
 
-// Limpeza periódica de tokens
-setInterval(() => {
-    const now = Date.now();
-    for (const [token, exp] of usedTokens.entries()) {
-        if (now > exp) usedTokens.delete(token);
-    }
-}, 5 * 60 * 1000);
-
-// =================================================================
-// FUNÇÕES DE ARMAZENAMENTO COM REDIS
-// =================================================================
-async function getLicense(username) {
-    try {
-        const data = await redisClient.get(`license:${username}`);
-        return data ? JSON.parse(data) : null;
-    } catch (error) {
-        console.error('Erro ao buscar licença:', error);
-        return null;
-    }
+// Carregar links dinamicamente
+let linksData = [];
+try {
+    linksData = require('./data/links.js');
+    console.log('✅ Links carregados:', linksData.map(l => `${l.alias} (${l.steps || 4} etapas)`).join(', '));
+} catch (error) {
+    console.error('❌ Erro ao carregar links.js:', error.message);
+    linksData = [];
 }
 
-async function setLicense(username, data) {
-    try {
-        await redisClient.setEx(`license:${username}`, 24 * 60 * 60, JSON.stringify(data)); // Expira em 24h
-    } catch (error) {
-        console.error('Erro ao salvar licença:', error);
+// Configuração das etapas
+const BASE_STEP_CONFIGS = {
+    impar: { 
+        temAnuncio: false, 
+        timer: 10, 
+        titulo: 'Verificação de Acesso', 
+        subtitulo: 'Confirmando que você não é um robô...', 
+        tipoBotao: 'cpa',
+        icone: 'shield-alt'
+    },
+    par: { 
+        temAnuncio: true, 
+        timer: 15, 
+        titulo: 'Processando Link', 
+        subtitulo: 'Estabelecendo conexão segura...', 
+        tipoBotao: 'normal',
+        icone: 'lock'
+    },
+    final: { 
+        temAnuncio: true, 
+        timer: 15, 
+        titulo: 'Link Pronto!', 
+        subtitulo: 'Seu conteúdo está disponível', 
+        tipoBotao: 'final',
+        icone: 'check-circle'
     }
-}
+};
 
-async function getDeviceUsername(deviceId) {
-    try {
-        return await redisClient.get(`device:${deviceId}`);
-    } catch (error) {
-        console.error('Erro ao buscar device:', error);
-        return null;
-    }
-}
-
-async function setDevice(deviceId, username) {
-    try {
-        await redisClient.setEx(`device:${deviceId}`, 24 * 60 * 60, username);
-    } catch (error) {
-        console.error('Erro ao salvar device:', error);
-    }
-}
-
-async function getAllLicenses() {
-    try {
-        const keys = await redisClient.keys('license:*');
-        const licenses = [];
-        
-        for (const key of keys) {
-            const data = await redisClient.get(key);
-            if (data) {
-                licenses.push(JSON.parse(data));
-            }
-        }
-        
-        return licenses;
-    } catch (error) {
-        console.error('Erro ao buscar todas licenças:', error);
-        return [];
-    }
-}
-
-async function deleteLicense(username) {
-    try {
-        // Buscar a licença primeiro
-        const license = await getLicense(username);
-        
-        // Remover a licença
-        await redisClient.del(`license:${username}`);
-        
-        // Se tiver deviceId registrado, remover também
-        if (license && license.registeredDeviceId) {
-            await redisClient.del(`device:${license.registeredDeviceId}`);
-            console.log(`✅ Device ${license.registeredDeviceId} removido`);
-        }
-        
-        console.log(`✅ Licença ${username} removida do Redis`);
-    } catch (error) {
-        console.error('Erro ao deletar licença:', error);
-    }
-}
+// Links CPA
+const CPA_LINKS = [
+    'https://omg10.com/4/10420694',
+    'https://www.effectivegatecpm.com/ki4e3ftt5h?key=99415bf2c750643bbcc7c1380848fee9',
+    'https://pertlouv.com/pZ0Ob1Vxs8U=?',
+    'https://record.elephantbet.com/_rhoOOvBxBOAWqcfzuvZcQGNd7ZgqdRLk/1/',
+    'https://media1.placard.co.mz/redirect.aspx?pid=5905&bid=1690',
+    'https://affiliates.bantubet.co.mz/links/?btag=2307928',
+    'https://bony-teaching.com/KUN7HR'
+];
 
 // =================================================================
-// CONFIGURAÇÕES
+// FUNÇÕES DE SESSÃO COM REDIS (MESMO PADRÃO QUE FUNCIONA)
 // =================================================================
-const SESSION_SECRET = 'minha_chave_super_secreta_123456789';
-const ADMIN_USERNAME = 'admin';
-const ADMIN_PASSWORD = 'admin123';
-const STEP_TIME_MS = 15000; // 15 segundos
-const TOKEN_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutos
+function generateSessionId() {
+    return crypto.randomBytes(32).toString('hex');
+}
 
-// =================================================================
-// MIDDLEWARE DE AUTENTICAÇÃO ADMIN
-// =================================================================
-function authenticateAdmin(req, res, next) {
-    const authHeader = req.headers.authorization;
+function getClientFingerprint(req) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'] || '';
+    return crypto.createHash('sha256').update(ip + userAgent).digest('hex').substring(0, 16);
+}
+
+async function createSession(alias, totalSteps, req) {
+    const sessionId = generateSessionId();
+    const fingerprint = getClientFingerprint(req);
     
-    if (!authHeader || !authHeader.startsWith('Basic ')) {
-        res.setHeader('WWW-Authenticate', 'Basic realm="Admin Area"');
-        return res.status(401).json({ 
-            success: false, 
-            message: 'Autenticação necessária' 
-        });
-    }
-    
-    const base64Credentials = authHeader.split(' ')[1];
-    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-    const [username, password] = credentials.split(':');
-    
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-        next();
-    } else {
-        return res.status(403).json({ 
-            success: false, 
-            message: 'Credenciais inválidas' 
-        });
-    }
-}
-
-// =================================================================
-// FUNÇÕES DE TOKEN
-// =================================================================
-function generateToken(step, ip) {
-    const payload = {
-        step: step,
-        ip: ip,
-        iat: Date.now(),
-        exp: Date.now() + TOKEN_EXPIRATION_MS,
-        nonce: crypto.randomBytes(16).toString('hex')
+    const sessionData = {
+        id: sessionId,
+        alias: alias,
+        etapa_atual: 1,
+        totalSteps: totalSteps,
+        fingerprint: fingerprint,
+        criado_em: Date.now(),
+        ultima_acao: Date.now(),
+        cpas_abertos: 0,
+        ip: req.ip
     };
     
-    const data = JSON.stringify(payload);
-    const hmac = crypto.createHmac('sha256', SESSION_SECRET);
-    hmac.update(data);
-    const signature = hmac.digest('hex');
+    // Salva no Redis (igual seu sistema de licenças)
+    await redisClient.setEx(
+        `session:${sessionId}`,
+        SESSION_EXPIRATION,
+        JSON.stringify(sessionData)
+    );
     
-    return `${Buffer.from(data).toString('base64url')}.${signature}`;
+    // Backup por fingerprint
+    await redisClient.setEx(
+        `fingerprint:${fingerprint}`,
+        SESSION_EXPIRATION,
+        sessionId
+    );
+    
+    console.log(`✅ Sessão criada: ${sessionId.substring(0, 8)}... para ${alias}`);
+    return sessionData;
 }
 
-function verifyToken(token, ip) {
+async function getSession(sessionId) {
+    if (!sessionId) return null;
+    
     try {
-        const [encodedData, signature] = token.split('.');
-        if (!encodedData || !signature) return null;
-
-        const data = Buffer.from(encodedData, 'base64url').toString();
-        const payload = JSON.parse(data);
-
-        if (Date.now() > payload.exp) return null;
-        if (payload.ip !== ip) return null;
-
-        const hmac = crypto.createHmac('sha256', SESSION_SECRET);
-        hmac.update(data);
-        const expectedSignature = hmac.digest('hex');
-
-        if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
-            return null;
-        }
-
-        return payload;
+        const data = await redisClient.get(`session:${sessionId}`);
+        if (!data) return null;
+        
+        const session = JSON.parse(data);
+        session.ultima_acao = Date.now();
+        
+        // Renova expiração
+        await redisClient.setEx(
+            `session:${sessionId}`,
+            SESSION_EXPIRATION,
+            JSON.stringify(session)
+        );
+        
+        return session;
     } catch (e) {
+        console.error('❌ Erro ao buscar sessão:', e);
         return null;
     }
 }
 
+async function updateSession(sessionId, etapa) {
+    const session = await getSession(sessionId);
+    if (!session) return null;
+    
+    session.etapa_atual = etapa;
+    session.ultima_acao = Date.now();
+    
+    await redisClient.setEx(
+        `session:${sessionId}`,
+        SESSION_EXPIRATION,
+        JSON.stringify(session)
+    );
+    
+    return session;
+}
+
+async function recoverSession(req) {
+    // Tenta pelo cookie
+    const sessionId = req.cookies?.sessionId;
+    if (sessionId) {
+        const session = await getSession(sessionId);
+        if (session) return session;
+    }
+    
+    // Tenta pelo header (para apps)
+    const headerSession = req.headers['x-session-id'];
+    if (headerSession) {
+        const session = await getSession(headerSession);
+        if (session) return session;
+    }
+    
+    // Tenta pelo fingerprint
+    const fingerprint = getClientFingerprint(req);
+    const recoveredId = await redisClient.get(`fingerprint:${fingerprint}`);
+    if (recoveredId) {
+        const session = await getSession(recoveredId);
+        if (session) return session;
+    }
+    
+    return null;
+}
+
 // =================================================================
-// FUNÇÃO PARA GERAR CREDENCIAIS DE 20h
+// FUNÇÕES AUXILIARES
 // =================================================================
-function generateCredentials() {
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0,10).replace(/-/g, '');
-    const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
-    const expiryDate = new Date(now.getTime() + (20 * 60 * 60 * 1000));
+function getStepConfig(etapa, totalSteps) {
+    if (etapa === totalSteps) {
+        return { ...BASE_STEP_CONFIGS.final };
+    }
+    
+    const isImpar = etapa % 2 === 1;
+    const baseConfig = isImpar ? BASE_STEP_CONFIGS.impar : BASE_STEP_CONFIGS.par;
+    
+    const titulos = {
+        1: 'Verificação Inicial',
+        2: 'Conexão Segura',
+        3: 'Confirmação Adicional', 
+        4: 'Otimização de Rede',
+        5: 'Verificação Final',
+        6: 'Preparando Conteúdo'
+    };
+    
+    const subtitulos = {
+        1: 'Confirmando que você não é um robô...',
+        2: 'Estabelecendo túnel criptografado...',
+        3: 'Última verificação de segurança...',
+        4: 'Acelerando conexão com o servidor...',
+        5: 'Quase pronto! Última confirmação...',
+        6: 'Descriptografando link de destino...'
+    };
     
     return {
-        username: `TEMP_${dateStr}_${randomPart}`,
-        password: '20H_' + crypto.randomBytes(8).toString('hex').toUpperCase(),
-        expiresAt: expiryDate.toISOString(),
-        createdAt: now.toISOString()
+        ...baseConfig,
+        titulo: titulos[etapa] || baseConfig.titulo,
+        subtitulo: subtitulos[etapa] || baseConfig.subtitulo
     };
 }
 
+function getRandomCpaLink() {
+    return CPA_LINKS[Math.floor(Math.random() * CPA_LINKS.length)];
+}
+
 // =================================================================
-// ROTA PRINCIPAL
+// MIDDLEWARE DE SESSÃO
 // =================================================================
+app.use(async (req, res, next) => {
+    // Pula para rotas públicas
+    if (req.path === '/' || req.path.startsWith('/public') || req.path === '/favicon.ico') {
+        return next();
+    }
+    
+    // Recupera sessão
+    const session = await recoverSession(req);
+    req.session = session;
+    
+    // Seta cookie se não existir
+    if (session && !req.cookies?.sessionId) {
+        res.cookie('sessionId', session.id, {
+            maxAge: SESSION_EXPIRATION * 1000,
+            httpOnly: true,
+            secure: false, // Mude para true se usar HTTPS
+            sameSite: 'lax'
+        });
+    }
+    
+    next();
+});
+
+// Para ler cookies
+app.use(require('cookie-parser')());
+
+// =================================================================
+// ROTAS
+// =================================================================
+
+// Página inicial
 app.get('/', (req, res) => {
-const html = `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Sistema de Acesso</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        }
-        
-        body {
-            background: linear-gradient(145deg, #E8F0FE 0%, #D9E9FF 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0;
-            padding: 16px;
-        }
-        
-        .main-container {
-            max-width: 480px;
-            width: 100%;
-            margin: 0 auto;
-        }
-        
-        /* Card principal */
-        .card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border-radius: 32px;
-            padding: 32px 24px;
-            width: 100%;
-            box-shadow: 0 25px 50px -12px rgba(0, 98, 204, 0.25),
-                        0 0 0 1px rgba(255, 255, 255, 0.5) inset;
-            border: 1px solid rgba(255, 255, 255, 0.8);
-            text-align: center;
-        }
-        
-        /* Ícone animado */
-        .animated-icon {
-            font-size: 64px;
-            margin-bottom: 16px;
-            animation: float 3s ease-in-out infinite;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-        
-        h1 {
-            font-size: 36px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #0066FF 0%, #0099FF 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 16px;
-            letter-spacing: -0.5px;
-        }
-        
-        .description {
-            color: #4A5B6E;
-            font-size: 16px;
-            line-height: 1.6;
-            margin-bottom: 32px;
-            padding: 0 12px;
-        }
-        
-        /* Botão principal */
-        .button {
-            background: linear-gradient(145deg, #0066FF, #0099FF);
-            color: white;
-            border: none;
-            padding: 18px 40px;
-            border-radius: 40px;
-            font-size: 18px;
-            font-weight: 700;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            width: 100%;
-            text-align: center;
-            box-shadow: 0 10px 20px -5px rgba(0, 102, 255, 0.4);
-            transition: all 0.3s;
-            margin-bottom: 24px;
-        }
-        
-        .button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 15px 25px -5px rgba(0, 102, 255, 0.5);
-        }
-        
-        .button:active {
-            transform: translateY(0);
-        }
-        
-        /* Card de informações */
-        .info-card {
-            background: #F5F9FF;
-            border-radius: 24px;
-            padding: 24px;
-            margin-bottom: 24px;
-            border: 1px solid #E2EEFF;
-        }
-        
-        .info-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #1A2E45;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .info-badge {
-            background: #0066FF;
-            color: white;
-            padding: 4px 12px;
-            border-radius: 40px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        /* Features em grid */
-        .features-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-        
-        .feature {
-            background: white;
-            padding: 16px;
-            border-radius: 18px;
-            text-align: center;
-            border: 1px solid #E2EEFF;
-        }
-        
-        .feature-emoji {
-            font-size: 28px;
-            margin-bottom: 8px;
-        }
-        
-        .feature-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #1A2E45;
-            margin-bottom: 4px;
-        }
-        
-        .feature-desc {
-            font-size: 11px;
-            color: #4A5B6E;
-        }
-        
-        /* Timeline das etapas */
-        .timeline {
-            background: white;
-            border-radius: 20px;
-            padding: 20px;
-            margin-bottom: 24px;
-        }
-        
-        .timeline-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-        
-        .timeline-item:last-child {
-            margin-bottom: 0;
-        }
-        
-        .timeline-number {
-            width: 36px;
-            height: 36px;
-            background: #F5F9FF;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            color: #0066FF;
-            border: 1px solid #E2EEFF;
-        }
-        
-        .timeline-content {
-            flex: 1;
-            text-align: left;
-        }
-        
-        .timeline-title {
-            font-size: 15px;
-            font-weight: 600;
-            color: #1A2E45;
-            margin-bottom: 2px;
-        }
-        
-        .timeline-sub {
-            font-size: 12px;
-            color: #4A5B6E;
-        }
-        
-        .timeline-duration {
-            background: #E8F0FE;
-            padding: 4px 10px;
-            border-radius: 40px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #0066FF;
-        }
-        
-        /* Footer e link admin */
-        .admin-section {
-            margin-top: 24px;
-            padding-top: 20px;
-            border-top: 1px solid #E2EEFF;
-        }
-        
-        .admin-link {
-            color: #4A5B6E;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 500;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 16px;
-            background: #F5F9FF;
-            border-radius: 40px;
-            transition: all 0.2s;
-        }
-        
-        .admin-link:hover {
-            background: #E2EEFF;
-            color: #0066FF;
-        }
-        
-        .footer {
-            margin-top: 20px;
-            color: #4A5B6E;
-            font-size: 12px;
-        }
-    </style>
-</head>
-<body>
-    <div class="main-container">
-        <div class="card">
-            <!-- Ícone animado -->
-            <div class="animated-icon"></div>
-            
-            <!-- Título -->
-            <h1>Gerar Acesso<br>de 20 Horas</h1>
-            
-            <!-- Descrição -->
-            <div class="description">
-                Complete as etapas de verificação para gerar suas credenciais de acesso temporário
-            </div>
-            
-            <!-- Botão iniciar -->
-            <a href="/acesso-mod" class="button">
-                Iniciar Processo
-            </a>
-            
-            <!-- Card informativo -->
-            <div class="info-card">
-                <div class="info-title">
-                    <span>ℹ️</span> Como funciona?
-                    <span class="info-badge">6 etapas</span>
-                </div>
-                
-                <!-- Grid de features -->
-                <div class="features-grid">
-                    <div class="feature">
-                        <div class="feature-emoji"></div>
-                        <div class="feature-title">15 segundos</div>
-                        <div class="feature-desc">por etapa</div>
-                    </div>
-                    <div class="feature">
-                        <div class="feature-emoji"></div>
-                        <div class="feature-title">Seguro</div>
-                        <div class="feature-desc">verificação</div>
-                    </div>
-                </div>
-                
-                <!-- Timeline das etapas -->
-                <div class="timeline">
-                    <div class="timeline-item">
-                        <div class="timeline-number">1</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">Verificação inicial</div>
-                            <div class="timeline-sub">Validação do dispositivo</div>
-                        </div>
-                        <div class="timeline-duration">15s</div>
-                    </div>
-                    
-                    <div class="timeline-item">
-                        <div class="timeline-number">2</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">Análise de segurança</div>
-                            <div class="timeline-sub">Checagem automática</div>
-                        </div>
-                        <div class="timeline-duration">15s</div>
-                    </div>
-                    
-                    <div class="timeline-item">
-                        <div class="timeline-number">3</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">Confirmação</div>
-                            <div class="timeline-sub">Validação final</div>
-                        </div>
-                        <div class="timeline-duration">15s</div>
-                    </div>
-                    
-                    <div class="timeline-item">
-                        <div class="timeline-number">4</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">Geração de token</div>
-                            <div class="timeline-sub">Criptografia</div>
-                        </div>
-                        <div class="timeline-duration">15s</div>
-                    </div>
-                    
-                    <div class="timeline-item">
-                        <div class="timeline-number">5</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">Vinculação</div>
-                            <div class="timeline-sub">Associação ao dispositivo</div>
-                        </div>
-                        <div class="timeline-duration">15s</div>
-                    </div>
-                    
-                    <div class="timeline-item">
-                        <div class="timeline-number">6</div>
-                        <div class="timeline-content">
-                            <div class="timeline-title">Liberação</div>
-                            <div class="timeline-sub">Acesso concedido</div>
-                        </div>
-                        <div class="timeline-duration">15s</div>
-                    </div>
-                </div>
-                
-                <!-- Total de tempo -->
-
-            </div>
-            
-            <!-- Área Admin -->
-            
-            
-            <!-- Footer -->
-            <div class="footer">
-                Sistema de verificação • 6 etapas de segurança
-            </div>
-        </div>
-    </div>
-</body>
-</html>
-`;
-    res.send(html);
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-
-// =================================================================
-// INICIAR PROCESSO
-// =================================================================
-app.get('/acesso-mod', (req, res) => {
-    const token = generateToken(1, req.ip);
-    res.redirect(`/step?token=${token}`);
-});
-
-// =================================================================
-// PÁGINA DE ETAPA
-// =================================================================
-// =================================================================
-// PÁGINA DE ETAPA (AGORA SERVE ARQUIVO ESTÁTICO)
-// =================================================================
-app.get('/step', (req, res) => {
-    const token = req.query.token;
+// Rota de entrada (encurtador) - URL LIMPA!
+app.get('/:alias', async (req, res) => {
+    const alias = req.params.alias;
+    const link = linksData.find(l => l.alias === alias);
     
-    if (!token) {
+    console.log(`🔗 Acessando alias: ${alias}`);
+    
+    if (!link) {
+        console.log(`❌ Alias não encontrado: ${alias}`);
         return res.redirect('/');
     }
     
-    const payload = verifyToken(token, req.ip);
-    if (!payload) {
+    const totalSteps = link.steps || 4;
+    
+    // Cria sessão no Redis
+    const session = await createSession(alias, totalSteps, req);
+    
+    // Seta cookie
+    res.cookie('sessionId', session.id, {
+        maxAge: SESSION_EXPIRATION * 1000,
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax'
+    });
+    
+    // URL LIMPA - sem token!
+    res.redirect('/page1');
+});
+
+// Rotas das etapas - URLs LIMPAS!
+app.get('/page:step', async (req, res) => {
+    const step = parseInt(req.params.step);
+    
+    console.log(`📄 Acessando page${step}`);
+    
+    if (!req.session) {
+        console.log('❌ Sem sessão');
         return res.redirect('/');
     }
     
-    // Redireciona para o arquivo HTML com parâmetros
-    res.redirect(`/step.html?token=${token}&step=${payload.step}`);
+    const session = req.session;
+    
+    // Verifica se está na etapa correta
+    if (step !== session.etapa_atual) {
+        console.log(`⚠️ Redirecionando: etapa correta é ${session.etapa_atual}`);
+        return res.redirect(`/page${session.etapa_atual}`);
+    }
+    
+    if (step > session.totalSteps) {
+        console.log(`❌ Etapa ${step} maior que total ${session.totalSteps}`);
+        return res.redirect('/');
+    }
+    
+    const link = linksData.find(l => l.alias === session.alias);
+    if (!link) {
+        console.log(`❌ Alias não encontrado: ${session.alias}`);
+        return res.redirect('/');
+    }
+    
+    const config = getStepConfig(step, session.totalSteps);
+    const cpaLink = (!config.temAnuncio && step < session.totalSteps) ? getRandomCpaLink() : null;
+    
+    // Passa o sessionId para o frontend (via header ou script)
+    res.send(gerarHTMLPagina(step, session.totalSteps, config, session.id, cpaLink, link.original_url));
 });
 
-
-// =================================================================
-// API: AVANÇAR ETAPA
-// =================================================================
-app.get('/api/next-step', async (req, res) => {
-    const token = req.query.token;
-    const clientStep = parseInt(req.query.currentStep);
-    const clientIp = req.ip;
-
-    if (!token || isNaN(clientStep)) {
-        return res.status(400).json({ error: 'Dados inválidos' });
+// API para avançar etapa
+app.post('/api/next-step', async (req, res) => {
+    const { currentStep, sessionId } = req.body;
+    
+    console.log(`🔄 Next-step: etapa ${currentStep}`);
+    
+    if (!sessionId) {
+        return res.status(403).json({ error: 'Sessão inválida', redirect: '/' });
     }
-
-    const payload = verifyToken(token, clientIp);
-    if (!payload) {
-        return res.status(403).json({ error: 'Sessão inválida' });
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+        return res.status(403).json({ error: 'Sessão expirada', redirect: '/' });
     }
-
-    if (payload.step !== clientStep) {
-        usedTokens.set(token, payload.exp);
-        return res.status(400).json({ error: 'Sequência inválida' });
+    
+    const clientStep = parseInt(currentStep);
+    
+    if (session.etapa_atual !== clientStep) {
+        return res.status(400).json({ error: 'Sequência inválida', redirect: '/' });
     }
-
-    const timeElapsed = Date.now() - payload.iat;
-    if (timeElapsed < STEP_TIME_MS - 2000) {
-        return res.status(429).json({ 
-            error: 'Aguarde mais ' + Math.ceil((STEP_TIME_MS - timeElapsed)/1000) + ' segundos' 
-        });
+    
+    const link = linksData.find(l => l.alias === session.alias);
+    if (!link) {
+        return res.status(404).json({ error: 'Link não encontrado', redirect: '/' });
     }
-
-    // FINAL DAS ETAPAS
-    if (clientStep >= 6) {
-        usedTokens.set(token, payload.exp);
-        
-        const credentials = generateCredentials();
-        
-        const licenseData = {
-            username: credentials.username,
-            password: credentials.password,
-            type: 'temp_20h',
-            createdAt: credentials.createdAt,
-            expiresAt: credentials.expiresAt,
-            registeredDeviceId: null,
-            firstSeen: null,
-            lastSeen: null,
-            status: 'active'
-        };
-        
-        await setLicense(credentials.username, licenseData);
-        
-        console.log('✅ Credenciais geradas e salvas no Redis:', credentials.username);
-        
+    
+    // Última etapa - redireciona para o link final
+    if (clientStep >= session.totalSteps) {
+        console.log(`✅ Finalizado! Redirecionando para: ${link.original_url}`);
         return res.json({ 
-            redirect: '/success?u=' + encodeURIComponent(credentials.username) + '&p=' + encodeURIComponent(credentials.password)
+            redirect: link.original_url,
+            final: true
         });
     }
     
-    // PRÓXIMA ETAPA
-    const nextStep = clientStep + 1;
-    const newToken = generateToken(nextStep, clientIp);
-    usedTokens.set(token, payload.exp);
+    // Avança etapa
+    const novaEtapa = clientStep + 1;
+    await updateSession(sessionId, novaEtapa);
+    
+    console.log(`✅ Avançando: etapa ${clientStep} → ${novaEtapa} (total: ${session.totalSteps})`);
     
     return res.json({ 
-        redirect: '/step?token=' + newToken
+        redirect: `/page${novaEtapa}`,
+        final: false
+    });
+});
+
+// API para obter configuração
+app.get('/api/step-config', async (req, res) => {
+    const sessionId = req.headers['x-session-id'] || req.query.sessionId;
+    
+    if (!sessionId) {
+        return res.status(403).json({ error: 'Sessão inválida' });
+    }
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+        return res.status(403).json({ error: 'Sessão expirada' });
+    }
+    
+    const config = getStepConfig(session.etapa_atual, session.totalSteps);
+    const cpaLink = (!config.temAnuncio && session.etapa_atual < session.totalSteps) ? getRandomCpaLink() : null;
+    
+    res.json({
+        etapa: session.etapa_atual,
+        totalSteps: session.totalSteps,
+        ...config,
+        cpaLink: cpaLink
     });
 });
 
 // =================================================================
-// PÁGINA DE SUCESSO
+// FUNÇÃO: Gerar HTML da página (DESIGN APRIMORADO - BOTÕES MENORES)
 // =================================================================
-app.get('/success', (req, res) => {
-    const { u: username, p: password } = req.query;
+function gerarHTMLPagina(etapa, totalSteps, config, sessionId, cpaLink, linkFinal) {
+    const scriptMonetag = config.temAnuncio 
+        ? '<script src="https://quge5.com/88/tag.min.js" data-zone="203209" async data-cfasync="false"></script>'
+        : '';
     
-    if (!username || !password) {
-        return res.redirect('/');
-    }
+    const bannersAdsterra = config.temAnuncio
+        ? `
+        <div class="ad-container ad-sticky">
+            <div id="container-57af132f9a89824d027d70445ba09a9a"></div>
+        </div>
+        <div class="ad-container ad-middle">
+            <div id="container-57af132f9a89824d027d70445ba09a9a-2"></div>
+        </div>
+        <div class="ad-container ad-footer">
+            <div id="container-57af132f9a89824d027d70445ba09a9a-3"></div>
+        </div>
+        <script>
+            if (!window.adsterraLoaded) {
+                window.adsterraLoaded = true;
+                const script = document.createElement('script');
+                script.src = '//pl27551656.revenuecpmgate.com/57af132f9a89824d027d70445ba09a9a/invoke.js';
+                script.async = true;
+                script.setAttribute('data-cfasync', 'false');
+                document.head.appendChild(script);
+            }
+        </script>
+        `
+        : '';
     
-    const html = `
-<!DOCTYPE html>
-<html>
+    const isCpaStep = !config.temAnuncio && etapa < totalSteps;
+    const isFinalStep = etapa === totalSteps;
+    
+    return `<!DOCTYPE html>
+<html lang="pt-BR">
 <head>
-    <title>Acesso Gerado!</title>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Mr Doso - ${config.titulo}</title>
+    ${scriptMonetag}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --secondary: #8b5cf6;
+            --accent: #10b981;
+            --dark: #1e293b;
+            --text: #334155;
+            --text-light: #64748b;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --radius-lg: 16px;
+            --radius-xl: 24px;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
         }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
-            background: linear-gradient(145deg, #E8F0FE 0%, #D9E9FF 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-gradient);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0;
             padding: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--text);
+            -webkit-font-smoothing: antialiased;
         }
         
-        .main-container {
-            max-width: 480px;
-            width: 100%;
-            margin: 0 auto;
-        }
-        
-        /* Card principal */
-        .card {
-            background: rgba(255, 255, 255, 0.95);
+        .container {
+            background: rgba(255, 255, 255, 0.98);
             backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border-radius: 32px;
-            padding: 32px 24px;
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
             width: 100%;
-            box-shadow: 0 25px 50px -12px rgba(0, 98, 204, 0.25),
-                        0 0 0 1px rgba(255, 255, 255, 0.5) inset;
-            border: 1px solid rgba(255, 255, 255, 0.8);
+            max-width: 520px;
+            padding: 24px 20px;
+            position: relative;
+            overflow: hidden;
+            animation: slideUp 0.3s ease;
         }
         
-        /* Header com ícone de sucesso */
-        .success-header {
-            text-align: center;
-            margin-bottom: 24px;
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         
-        .success-icon {
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(145deg, #48BB78, #38A169);
-            border-radius: 40px;
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary), var(--accent));
+        }
+        
+        .header {
             display: flex;
             align-items: center;
-            justify-content: center;
-            margin: 0 auto 16px;
-            box-shadow: 0 10px 20px -5px rgba(72, 187, 120, 0.3);
-        }
-        
-        .success-icon span {
-            font-size: 40px;
-            color: white;
-        }
-        
-        h1 {
-            font-size: 32px;
-            font-weight: 800;
-            color: #1A2E45;
-            margin-bottom: 8px;
-            letter-spacing: -0.5px;
-        }
-        
-        .subtitle {
-            color: #4A5B6E;
-            font-size: 16px;
-            font-weight: 500;
-            background: #F5F9FF;
-            padding: 8px 16px;
-            border-radius: 100px;
-            display: inline-block;
-            border: 1px solid #E2EEFF;
-        }
-        
-        /* Container das credenciais */
-        .credentials-container {
-            background: #F5F9FF;
-            border-radius: 24px;
-            padding: 24px;
-            margin: 24px 0;
-            border: 2px dashed #0066FF;
-            position: relative;
-        }
-        
-        .credentials-container::before {
-            content: "🔐";
-            position: absolute;
-            top: -12px;
-            left: 20px;
-            background: white;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 14px;
-            border: 1px solid #0066FF;
-            color: #0066FF;
-            font-weight: 600;
-        }
-        
-        .credential-row {
+            justify-content: space-between;
             margin-bottom: 20px;
         }
         
-        .credential-row:last-child {
-            margin-bottom: 0;
+        .step-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 5px 14px;
+            border-radius: 100px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.3px;
         }
         
-        .label {
-            font-size: 13px;
-            font-weight: 600;
-            color: #0066FF;
+        .step-progress {
+            color: var(--text-light);
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        h1 {
+            font-size: 1.6rem;
+            color: var(--dark);
             margin-bottom: 6px;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        
-        .value {
-            background: white;
-            border: 1px solid #E2EEFF;
-            padding: 16px 20px;
-            border-radius: 18px;
-            font-family: 'SF Mono', 'Courier New', monospace;
-            font-size: 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 4px 10px rgba(0, 102, 255, 0.05);
-        }
-        
-        .copy-btn {
-            background: linear-gradient(145deg, #E8F0FE, #D9E9FF);
-            color: #0066FF;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 40px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: all 0.2s;
-            border: 1px solid rgba(0, 102, 255, 0.2);
-        }
-        
-        .copy-btn:hover {
-            background: linear-gradient(145deg, #0066FF, #0099FF);
-            color: white;
-            transform: scale(1.05);
-        }
-        
-        .copy-btn.copied {
-            background: linear-gradient(145deg, #48BB78, #38A169);
-            color: white;
-            border: none;
-        }
-        
-        /* Card de aviso */
-        .warning-card {
-            background: #FFF4E8;
-            border-radius: 20px;
-            padding: 20px;
-            margin-bottom: 24px;
-            border-left: 4px solid #FF9800;
-        }
-        
-        .warning-title {
-            display: flex;
-            align-items: center;
-            gap: 8px;
             font-weight: 700;
-            color: #C75E00;
-            margin-bottom: 8px;
+            line-height: 1.3;
         }
         
-        .warning-text {
-            color: #4A5B6E;
-            font-size: 14px;
-            line-height: 1.5;
+        .subtitle {
+            color: var(--text-light);
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            line-height: 1.4;
         }
         
-        /* Informações adicionais */
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin-bottom: 24px;
+        .timer-section {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            border-radius: var(--radius-lg);
+            padding: 20px 16px;
+            margin-bottom: 16px;
+            border: 1px solid #e2e8f0;
         }
         
-        .info-item {
-            background: #F5F9FF;
-            padding: 16px;
-            border-radius: 18px;
+        .timer-display {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 3px;
+            margin-bottom: 12px;
+        }
+        
+        #countdown {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--primary);
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .timer-unit {
+            color: var(--text-light);
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+        
+        .countdown-label {
             text-align: center;
+            color: var(--text-light);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
         }
         
-        .info-item .emoji {
-            font-size: 24px;
-            margin-bottom: 4px;
-        }
-        
-        .info-item .title {
-            font-size: 14px;
-            font-weight: 600;
-            color: #1A2E45;
-            margin-bottom: 2px;
-        }
-        
-        .info-item .desc {
-            font-size: 11px;
-            color: #4A5B6E;
-        }
-        
-        /* Botão de voltar */
-        .button {
-            background: linear-gradient(145deg, #0066FF, #0099FF);
-            color: white;
-            border: none;
-            padding: 16px 32px;
-            border-radius: 40px;
-            font-size: 16px;
-            font-weight: 700;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
+        .loading-bar {
             width: 100%;
+            height: 5px;
+            background: #e2e8f0;
+            border-radius: 100px;
+            overflow: hidden;
+        }
+        
+        .progress {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            border-radius: 100px;
+            transition: width 1s linear;
+        }
+        
+        .ad-container {
+            width: 100%;
+            margin: 12px 0;
+            display: flex;
+            justify-content: center;
+            min-height: 80px;
+            background: #f8fafc;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            padding: 6px;
+            position: relative;
+        }
+        
+        .ad-container.ad-sticky {
+            position: sticky;
+            top: 10px;
+            z-index: 100;
+            min-height: 180px;
+        }
+        
+        .ad-container.ad-footer {
+            min-height: 180px;
+        }
+        
+        .content-area {
+            background: #f8fafc;
+            border-radius: var(--radius-lg);
+            padding: 20px 16px;
+            margin-top: 16px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .info-box {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            background: ${isCpaStep ? '#fef3c7' : '#d1fae5'};
+            border-left: 3px solid ${isCpaStep ? 'var(--warning)' : 'var(--success)'};
+            padding: 12px 14px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .info-box i {
+            font-size: 1.1rem;
+            color: ${isCpaStep ? 'var(--warning)' : 'var(--success)'};
+        }
+        
+        .info-box-content {
+            flex: 1;
+        }
+        
+        .info-box strong {
+            display: block;
+            color: var(--dark);
+            margin-bottom: 3px;
+            font-size: 0.9rem;
+        }
+        
+        .info-box p {
+            color: var(--text);
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+        
+        .button-container {
+            display: flex;
+            justify-content: center;
+        }
+        
+        .action-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            max-width: 300px;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font: 600 0.95rem 'Inter', sans-serif;
+            border: none;
+            cursor: pointer;
+            color: white;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            box-shadow: 0 3px 10px rgba(99, 102, 241, 0.3);
+            transition: all 0.2s ease;
+        }
+        
+        .action-button.cpa-button {
+            background: linear-gradient(135deg, var(--success), #059669);
+            box-shadow: 0 3px 10px rgba(16, 185, 129, 0.3);
+        }
+        
+        .action-button.final-button {
+            background: linear-gradient(135deg, var(--warning), #d97706);
+            box-shadow: 0 3px 10px rgba(245, 158, 11, 0.3);
+        }
+        
+        .action-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        
+        .action-button:not(:disabled):hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+        
+        .back-hint {
             text-align: center;
-            box-shadow: 0 10px 20px -5px rgba(0, 102, 255, 0.4);
-            transition: all 0.3s;
+            margin-top: 12px;
+            padding: 10px;
+            background: #e0e7ff;
+            border-radius: 8px;
+            display: none;
+            animation: pulse 1.5s infinite;
         }
         
-        .button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 15px 25px -5px rgba(0, 102, 255, 0.5);
+        .back-hint.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
         }
         
-        .button:active {
-            transform: translateY(0);
+        .back-hint i {
+            color: var(--primary);
+            font-size: 0.9rem;
         }
         
-        /* Footer */
-        .footer {
-            text-align: center;
+        .back-hint strong {
+            color: var(--dark);
+            font-size: 0.85rem;
+        }
+        
+        @keyframes pulse { 
+            0%, 100% { opacity: 1; } 
+            50% { opacity: 0.7; } 
+        }
+        
+        footer {
             margin-top: 20px;
-            color: #4A5B6E;
-            font-size: 12px;
+            color: var(--text-light);
+            font-size: 0.75rem;
+            text-align: center;
+        }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s;
+        }
+        
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal-box {
+            background: white;
+            padding: 24px 20px;
+            border-radius: 16px;
+            max-width: 320px;
+            width: 90%;
+            text-align: center;
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .modal-box h3 {
+            color: var(--dark);
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+        
+        .modal-box p {
+            color: var(--text);
+            margin-bottom: 20px;
+            line-height: 1.5;
+            font-size: 0.9rem;
+        }
+        
+        .modal-close {
+            padding: 8px 24px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .force-advance {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: var(--text-light);
+            cursor: pointer;
+            text-decoration: underline;
+            opacity: 0.7;
+            text-align: center;
+        }
+        
+        .force-advance:hover { opacity: 1; }
+        
+        @media (max-width: 480px) {
+            body { padding: 12px; }
+            .container { padding: 20px 16px; }
+            h1 { font-size: 1.4rem; }
+            #countdown { font-size: 2.5rem; }
+            .ad-container.ad-sticky, .ad-container.ad-footer { min-height: 150px; }
         }
     </style>
 </head>
 <body>
-    <div class="main-container">
-        <div class="card">
-            <!-- Header de sucesso -->
-            <div class="success-header">
-                <div class="success-icon">
-                    <span></span>
-                </div>
-                <h1>Acesso Gerado!</h1>
-                <div class="subtitle">⏱️ Válido por 20 horas</div>
+    <div class="container">
+        <div class="header">
+            <div class="step-badge">
+                <i class="fas fa-${config.icone}"></i>
+                <span>ETAPA ${etapa}/${totalSteps}</span>
             </div>
-            
-            <!-- Credenciais -->
-            <div class="credentials-container">
-                <div class="credential-row">
-                    <div class="label">
-                        <span></span> USUÁRIO
-                    </div>
-                    <div class="value" id="username">${username}</div>
-                </div>
-                
-                <div class="credential-row">
-                    <div class="label">
-                        <span></span> SENHA
-                    </div>
-                    <div class="value" id="password">${password}</div>
-                </div>
+            <div class="step-progress">
+                ${Math.round((etapa / totalSteps) * 100)}%
             </div>
-            
-            <!-- Aviso importante -->
-            <div class="warning-card">
-                <div class="warning-title">
-                    <span></span> Atenção!
-                </div>
-                <div class="warning-text">
-                    Esta conta será vinculada ao primeiro dispositivo que fizer login. 
-                    Não compartilhe suas credenciais com ninguém.
+        </div>
+        
+        <h1>${config.titulo}</h1>
+        <p class="subtitle">${config.subtitulo}</p>
+        
+        <div class="timer-section">
+            <div class="timer-display">
+                <span id="countdown">${config.timer}</span>
+                <span class="timer-unit">seg</span>
+            </div>
+            <div class="countdown-label">AGUARDE PARA CONTINUAR</div>
+            <div class="loading-bar">
+                <div id="progressBar" class="progress"></div>
+            </div>
+        </div>
+        
+        ${bannersAdsterra}
+        
+        <div class="content-area">
+            <div class="info-box">
+                <i class="fas ${isCpaStep ? 'fa-shield-alt' : isFinalStep ? 'fa-check-circle' : 'fa-clock'}"></i>
+                <div class="info-box-content">
+                    <strong>${isCpaStep ? 'Verificação' : isFinalStep ? 'Pronto!' : 'Processando'}</strong>
+                    <p>${isCpaStep ? 'Clique para verificar acesso' : isFinalStep ? 'Link pronto para acesso' : 'Botão será liberado'}</p>
                 </div>
             </div>
             
-            <!-- Grid informativo -->
-            <div class="info-grid">
-                <div class="info-item">
-                    <div class="emoji"></div>
-                    <div class="title">Protegido</div>
-                    <div class="desc">Criptografia avançada</div>
-                </div>
-                <div class="info-item">
-                    <div class="emoji"></div>
-                    <div class="title">Rápido</div>
-                    <div class="desc">Acesso imediato</div>
-                </div>
+            <div class="button-container">
+                <button id="mainActionBtn" class="action-button ${isCpaStep ? 'cpa-button' : isFinalStep ? 'final-button' : ''}" disabled>
+                    <i class="fas fa-hourglass-half"></i>
+                    <span>Aguarde...</span>
+                </button>
             </div>
             
-            <!-- Botão voltar -->
-            <a href="/" class="button">← Voltar ao Início</a>
-            
-            <!-- Footer -->
-            <div class="footer">
-                Guarde suas credenciais em local seguro
+            <div id="backHint" class="back-hint">
+                <i class="fas fa-check-circle"></i>
+                <strong>Verificado! Clique para avançar</strong>
             </div>
+            
+            <div class="force-advance" id="forceAdvance" style="display: none;">
+                <i class="fas fa-arrow-right"></i> Avançar manualmente
+            </div>
+        </div>
+        
+        <footer>© 2026 Mr Doso Web</footer>
+    </div>
+    
+    <div id="alertModal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="alertTitle">Aviso</h3>
+            <p id="alertMessage"></p>
+            <button class="modal-close" onclick="closeModal()">OK</button>
         </div>
     </div>
-
+    
     <script>
-        function copyToClipboard(elementId) {
-            const element = document.getElementById(elementId);
-            const valueDiv = element;
-            const text = valueDiv.innerText.replace('Copiar', '').replace('Copiado!', '').trim();
+        const CONFIG = {
+            etapa: ${etapa},
+            totalSteps: ${totalSteps},
+            timer: ${config.timer},
+            cpaLink: ${cpaLink ? JSON.stringify(cpaLink) : 'null'},
+            sessionId: '${sessionId}',
+            isCpaStep: ${isCpaStep},
+            isFinalStep: ${isFinalStep},
+            linkFinal: ${isFinalStep ? JSON.stringify(linkFinal) : 'null'}
+        };
+        
+        let timeLeft = CONFIG.timer;
+        let cpaOpened = false;
+        let isProcessing = false;
+        
+        const countdownEl = document.getElementById('countdown');
+        const progressBar = document.getElementById('progressBar');
+        const mainBtn = document.getElementById('mainActionBtn');
+        const backHint = document.getElementById('backHint');
+        const forceAdvance = document.getElementById('forceAdvance');
+        
+        window.addEventListener('focus', () => {
+            if (CONFIG.isCpaStep && cpaOpened && !isProcessing) {
+                backHint.classList.add('show');
+                forceAdvance.style.display = 'block';
+            }
+        });
+        
+        function startTimer() {
+            if (CONFIG.timer === 0) {
+                enableButton();
+                return;
+            }
             
-            navigator.clipboard.writeText(text).then(() => {
-                const btn = element.querySelector('.copy-btn');
-                const originalText = btn.textContent;
+            const totalTime = CONFIG.timer;
+            countdownEl.textContent = timeLeft;
+            progressBar.style.width = '0%';
+            
+            const interval = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    countdownEl.textContent = timeLeft;
+                    progressBar.style.width = ((totalTime - timeLeft) / totalTime) * 100 + '%';
+                }
                 
-                btn.textContent = 'Copiado!';
-                btn.classList.add('copied');
-                
-                setTimeout(() => {
-                    btn.textContent = 'Copiar';
-                    btn.classList.remove('copied');
-                }, 2000);
-            });
+                if (timeLeft <= 0) {
+                    clearInterval(interval);
+                    enableButton();
+                }
+            }, 1000);
         }
         
-        // Adiciona botões de cópia
-        ['username', 'password'].forEach(id => {
-            const element = document.getElementById(id);
-            const btn = document.createElement('button');
-            btn.className = 'copy-btn';
-            btn.textContent = 'Copiar';
-            btn.onclick = () => copyToClipboard(id);
-            element.appendChild(btn);
+        function enableButton() {
+            mainBtn.disabled = false;
+            
+            if (CONFIG.isFinalStep) {
+                mainBtn.innerHTML = '<i class="fas fa-external-link-alt"></i><span>Acessar Conteúdo</span>';
+                mainBtn.className = 'action-button final-button';
+            } else if (CONFIG.isCpaStep) {
+                if (!cpaOpened) {
+                    mainBtn.innerHTML = '<i class="fas fa-shield-alt"></i><span>Verificar Acesso</span>';
+                    mainBtn.className = 'action-button cpa-button';
+                } else {
+                    mainBtn.innerHTML = '<i class="fas fa-arrow-right"></i><span>Continuar</span>';
+                    mainBtn.className = 'action-button';
+                }
+            } else {
+                mainBtn.innerHTML = '<i class="fas fa-arrow-right"></i><span>Continuar</span>';
+                mainBtn.className = 'action-button';
+            }
+        }
+        
+        forceAdvance.addEventListener('click', () => {
+            if (CONFIG.isCpaStep && !cpaOpened) {
+                cpaOpened = true;
+                enableButton();
+                backHint.classList.add('show');
+            }
         });
+        
+        mainBtn.addEventListener('click', async () => {
+            if (isProcessing) return;
+            if (timeLeft > 0 && CONFIG.timer > 0) {
+                showModal('Aguarde', 'Faltam ' + timeLeft + ' segundos.');
+                return;
+            }
+            
+            isProcessing = true;
+            
+            if (CONFIG.isFinalStep) {
+                window.location.href = CONFIG.linkFinal;
+                return;
+            }
+            
+            if (CONFIG.isCpaStep && !cpaOpened && CONFIG.cpaLink) {
+                mainBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Abrindo...</span>';
+                window.open(CONFIG.cpaLink, '_blank');
+                cpaOpened = true;
+                enableButton();
+                backHint.classList.add('show');
+                forceAdvance.style.display = 'block';
+                isProcessing = false;
+                return;
+            }
+            
+            mainBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Processando...</span>';
+            mainBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/next-step', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        currentStep: CONFIG.etapa, 
+                        sessionId: CONFIG.sessionId 
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                } else {
+                    showModal('Erro', data.error || 'Falha ao avançar');
+                    mainBtn.disabled = false;
+                    enableButton();
+                }
+            } catch (e) {
+                showModal('Erro', 'Falha na conexão');
+                mainBtn.disabled = false;
+                enableButton();
+            } finally {
+                isProcessing = false;
+            }
+        });
+        
+        function showModal(title, msg) {
+            document.getElementById('alertTitle').textContent = title;
+            document.getElementById('alertMessage').textContent = msg;
+            document.getElementById('alertModal').classList.add('active');
+        }
+        
+        function closeModal() {
+            document.getElementById('alertModal').classList.remove('active');
+        }
+        
+        startTimer();
     </script>
 </body>
-</html>
-`;
-    
-    res.send(html);
-});
-
-
-// =================================================================
-// LOGIN DO APP (AGORA COM REDIS)
-// =================================================================
-app.post('/login', async (req, res) => {
-    const { deviceId, username, password } = req.body;
-    
-    if (!deviceId || !username || !password) {
-        return res.status(400).json({ 
-            success: false, 
-            message: 'Dados incompletos.' 
-        });
-    }
-
-    if (username.startsWith('TEMP_')) {
-        const license = await getLicense(username);
-        
-        if (!license) {
-            return res.json({ 
-                success: false, 
-                message: 'Credenciais inválidas.' 
-            });
-        }
-        
-        if (license.password !== password) {
-            return res.json({ 
-                success: false, 
-                message: 'Senha incorreta.' 
-            });
-        }
-        
-        const now = new Date();
-        const expiresAt = new Date(license.expiresAt);
-        
-        if (now > expiresAt) {
-            // Remover licença expirada do Redis
-            await deleteLicense(username);
-            
-            return res.json({ 
-                success: false, 
-                message: 'Sua licença de 20 horas expirou.',
-                expired: true 
-            });
-        }
-        
-        if (!license.registeredDeviceId) {
-            // Primeiro acesso - vincula este device
-            license.registeredDeviceId = deviceId;
-            license.firstSeen = now.toISOString();
-            license.lastSeen = now.toISOString();
-            
-            await setLicense(username, license);
-            await setDevice(deviceId, username);
-            
-            const remainingMs = expiresAt - now;
-            const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
-            const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-            
-            return res.json({ 
-                success: true, 
-                message: "Acesso permitido. " + remainingHours + "h " + remainingMinutes + "m restantes.",
-                type: 'temp_20h',
-                expiresAt: license.expiresAt
-            });
-            
-        } else if (license.registeredDeviceId !== deviceId) {
-            return res.json({ 
-                success: false, 
-                message: 'Esta conta já está em uso em outro dispositivo.',
-                type: 'already_in_use'
-            });
-            
-        } else {
-            license.lastSeen = now.toISOString();
-            await setLicense(username, license);
-            
-            const remainingMs = expiresAt - now;
-            const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
-            const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-            
-            return res.json({ 
-                success: true, 
-                message: "Acesso permitido. " + remainingHours + "h " + remainingMinutes + "m restantes.",
-                type: 'temp_20h',
-                expiresAt: license.expiresAt
-            });
-        }
-    }
-    
-    return res.json({ 
-        success: false, 
-        message: 'Credenciais inválidas.' 
-    });
-});
-
-// =================================================================
-// ENDPOINT PARA VERIFICAR STATUS (ÚTIL PARA O APP)
-// =================================================================
-app.post('/check-status', async (req, res) => {
-    const { deviceId, username } = req.body;
-    
-    const license = await getLicense(username);
-    
-    if (!license) {
-        return res.json({ valid: false });
-    }
-    
-    const now = new Date();
-    const expiresAt = new Date(license.expiresAt);
-    
-    // Verificar se expirou
-    if (now > expiresAt) {
-        await deleteLicense(username);
-        return res.json({ valid: false, expired: true });
-    }
-    
-    // Verificar se é o mesmo dispositivo
-    if (license.registeredDeviceId && license.registeredDeviceId !== deviceId) {
-        return res.json({ valid: false, wrongDevice: true });
-    }
-    
-    const remainingMs = expiresAt - now;
-    const remainingHours = Math.floor(remainingMs / (1000 * 60 * 60));
-    const remainingMinutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-    
-    res.json({
-        valid: true,
-        remainingHours,
-        remainingMinutes,
-        expiresAt: license.expiresAt
-    });
-});
-
-// =================================================================
-// ÁREA ADMIN (ATUALIZADA COM REDIS)
-// =================================================================
-app.get('/admin', (req, res) => {
-    const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Admin Login</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                margin: 0;
-                padding: 20px;
-            }
-            .card {
-                background: white;
-                border-radius: 10px;
-                padding: 40px;
-                max-width: 400px;
-                width: 100%;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            }
-            h1 { color: #333; margin-bottom: 30px; text-align: center; }
-            .form-group {
-                margin-bottom: 20px;
-            }
-            label {
-                display: block;
-                margin-bottom: 5px;
-                color: #4a5568;
-                font-weight: 600;
-            }
-            input {
-                width: 100%;
-                padding: 10px;
-                border: 1px solid #cbd5e0;
-                border-radius: 5px;
-                font-size: 16px;
-            }
-            button {
-                width: 100%;
-                padding: 12px;
-                background: #4299e1;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                font-size: 16px;
-                cursor: pointer;
-            }
-            button:hover {
-                background: #3182ce;
-            }
-            .error {
-                color: #e53e3e;
-                margin-top: 10px;
-                text-align: center;
-                display: none;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <h1>🔐 Área Admin</h1>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label>Usuário</label>
-                    <input type="text" id="username" required>
-                </div>
-                <div class="form-group">
-                    <label>Senha</label>
-                    <input type="password" id="password" required>
-                </div>
-                <button type="submit">Entrar</button>
-                <div class="error" id="error">Credenciais inválidas</div>
-            </form>
-        </div>
-
-        <script>
-            document.getElementById('loginForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                
-                const username = document.getElementById('username').value;
-                const password = document.getElementById('password').value;
-                
-                const auth = btoa(username + ':' + password);
-                
-                try {
-                    const response = await fetch('/admin/dashboard', {
-                        headers: {
-                            'Authorization': 'Basic ' + auth
-                        }
-                    });
-                    
-                    if (response.ok) {
-                        sessionStorage.setItem('adminAuth', auth);
-                        window.location.href = '/admin/dashboard';
-                    } else {
-                        document.getElementById('error').style.display = 'block';
-                    }
-                } catch (error) {
-                    document.getElementById('error').style.display = 'block';
-                }
-            });
-        </script>
-    </body>
-    </html>
-    `;
-    
-    res.send(html);
-});
-
-app.get('/admin/dashboard', authenticateAdmin, async (req, res) => {
-    const allLicenses = await getAllLicenses();
-    
-    const licenseRows = allLicenses.map(license => {
-        const now = new Date();
-        const expiresAt = new Date(license.expiresAt);
-        const isExpired = now > expiresAt;
-        const isVinculada = license.registeredDeviceId ? '✅ Sim' : '❌ Não';
-        
-        return `
-        <tr>
-            <td>${license.username}</td>
-            <td>${license.registeredDeviceId || '—'}</td>
-            <td>${new Date(license.createdAt).toLocaleString()}</td>
-            <td>${new Date(license.expiresAt).toLocaleString()}</td>
-            <td>${isExpired ? '❌ Expirada' : '✅ Ativa'}</td>
-            <td>${isVinculada}</td>
-            <td>
-                <button onclick="checkLicense('${license.username}')">🔍</button>
-                <button onclick="removeLicense('${license.username}')">❌</button>
-            </td>
-        </tr>
-        `;
-    }).join('');
-    
-    const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Admin Dashboard</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            /* ... seu CSS existente ... */
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h1>🔧 Painel Admin (Redis)</h1>
-                <a href="/admin/logout" class="logout">Sair</a>
-            </div>
-            
-            <div class="stats">
-                <div class="stat-card">
-                    <div>Total Licenças</div>
-                    <div class="stat-number">${allLicenses.length}</div>
-                </div>
-                <div class="stat-card">
-                    <div>Ativas</div>
-                    <div class="stat-number">${allLicenses.filter(l => new Date() < new Date(l.expiresAt)).length}</div>
-                </div>
-                <div class="stat-card">
-                    <div>Vinculadas</div>
-                    <div class="stat-number">${allLicenses.filter(l => l.registeredDeviceId).length}</div>
-                </div>
-            </div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>Username</th>
-                        <th>Device ID</th>
-                        <th>Criada em</th>
-                        <th>Expira em</th>
-                        <th>Status</th>
-                        <th>Vinculada</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${licenseRows || '<tr><td colspan="7">Nenhuma licença encontrada</td></tr>'}
-                </tbody>
-            </table>
-            
-            <div style="margin-top: 20px; padding: 10px; background: #e6f7ff; border-radius: 5px;">
-                <strong>✅ Dados persistentes no Redis!</strong> As licenças não serão perdidas quando o servidor reiniciar.
-            </div>
-        </div>
-
-        <script>
-            const auth = sessionStorage.getItem('adminAuth');
-            
-            async function checkLicense(username) {
-                const response = await fetch('/admin/check/' + username, {
-                    headers: { 'Authorization': 'Basic ' + auth }
-                });
-                const data = await response.json();
-                alert(JSON.stringify(data, null, 2));
-            }
-            
-            async function removeLicense(username) {
-                if (!confirm('Remover licença ' + username + '?')) return;
-                
-                const response = await fetch('/admin/remove?username=' + username, {
-                    headers: { 'Authorization': 'Basic ' + auth }
-                });
-                const data = await response.json();
-                alert(data.message);
-                location.reload();
-            }
-        </script>
-    </body>
-    </html>
-    `;
-    
-    res.send(html);
-});
-
-app.get('/admin/logout', (req, res) => {
-    res.send(`
-    <script>
-        sessionStorage.removeItem('adminAuth');
-        window.location.href = '/admin';
-    </script>
-    `);
-});
-
-app.get('/admin/check/:username', authenticateAdmin, async (req, res) => {
-    const { username } = req.params;
-    const license = await getLicense(username);
-    
-    if (!license) {
-        return res.json({ success: false, message: 'Licença não encontrada' });
-    }
-    
-    res.json({
-        success: true,
-        license: license
-    });
-});
-
-app.get('/admin/remove', authenticateAdmin, async (req, res) => {
-    const { username } = req.query;
-    
-    if (username) {
-        await deleteLicense(username);
-        return res.json({ success: true, message: 'Licença ' + username + ' removida' });
-    } else {
-        return res.status(400).json({ success: false, message: 'Parâmetro necessário' });
-    }
-});
-
-// =================================================================
-// ENDPOINT PARA DEBUG
-// =================================================================
-app.get('/redis-test', async (req, res) => {
-    try {
-        await redisClient.set('test-key', 'Redis funcionando!');
-        const value = await redisClient.get('test-key');
-        res.json({ 
-            status: 'ok', 
-            message: value,
-            redis: 'conectado'
-        });
-    } catch (error) {
-        res.json({ status: 'error', error: error.message });
-    }
-});
+</html>`;
+}
 
 // =================================================================
 // INICIA O SERVIDOR
 // =================================================================
 app.listen(PORT, () => {
     console.log(`
-    🚀 Servidor rodando na porta ${PORT}
+    🚀 SERVIDOR RODANDO NA PORTA ${PORT}
     
-    👤 Público:
-        GET  /              - Página inicial
-        GET  /acesso-mod    - Iniciar processo
-        GET  /step          - Página de etapas
-        GET  /success       - Credenciais geradas
-        POST /login         - Login do app
-        POST /check-status  - Verificar status da licença
-        
-    🔐 Admin: ${ADMIN_USERNAME} / ${ADMIN_PASSWORD}
-        GET  /admin         - Página de login
-        GET  /admin/dashboard - Painel admin
-        
-    ✅ REDIS CONECTADO! Dados persistentes.
-    ⏱️  ${STEP_TIME_MS/1000}s por etapa · 6 etapas
+    ✅ REDIS CLOUD CONECTADO!
+    📋 Links carregados: ${linksData.length}
+    🔗 URLs LIMPAS - Sem tokens na URL!
+    ⚡ Performance máxima com Redis
     `);
 });
